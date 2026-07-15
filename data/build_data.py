@@ -47,44 +47,135 @@ ROSTER = [
     (202322,  "John Wall",           "PG", "Cautionary", "Five straight All-Star seasons, then a max contract met an Achilles tear."),
 ]
 
-# ---------------------------------------------------------------- model
+# ---------------------------------------------------------------- model v2
+#
+# v2 fixes (vs v1):
+#  1. POSITION-RELATIVE baselines (75% position / 25% league blend) — guards
+#     are no longer structurally discounted vs big-man stat profiles.
+#  2. Volume-scaled efficiency — TS% counts more the more you score.
+#  3. Per-stat contribution cap (+/-3) — no single stat can dominate a score.
+#  4. Rebuilt age curve — flat prime plateau 25-30, small youth premium only
+#     under 25 (cap +6%), gentle post-30 decline (6%/yr base) cut up to 60%
+#     by elite current production, hard floor 0.68. Old stars stay investable.
+#  5. Durability memory + talent carryover — availability blends 3 seasons
+#     (70/20/10, fast recovery clause); a <15-game season no longer re-scores
+#     TALENT from a tiny sample (score carries forward at 15% decay) — the
+#     injury craters the availability factor, not the skill estimate.
+#  6. Track-record shrinkage — 1st/2nd-year players are blended toward a
+#     league-average-starter prior (35%/15%), so rookies can't out-price
+#     proven MVPs on one season of stats.
+
 STAT_WEIGHTS = {
     "PTS": 1.00, "TRB": 0.70, "AST": 0.90, "STL": 0.80,
     "BLK": 0.80, "TOV": -0.70, "TS_PCT": 0.60, "MIN": 0.50,
 }
-# League baselines (per-game, rotation players; era-stable approximations).
-BASE = {
+# League baseline (per-game, rotation players; era-stable approximations).
+LEAGUE_BASE = {
     "PTS": (11.5, 6.0), "TRB": (4.4, 2.6), "AST": (2.6, 2.0),
     "STL": (0.75, 0.35), "BLK": (0.48, 0.45), "TOV": (1.5, 0.75),
     "TS_PCT": (0.565, 0.045), "MIN": (24.0, 6.5),
 }
-PRIME, DECLINE, YOUTH_BONUS, YOUTH_CAP = 28.0, 0.10, 0.02, 1.15
-ELITE_SD_Z = 10.0          # weighted-z at which age resistance saturates
-RESISTANCE = 0.5
+# Position baselines: what an average ROTATION PLAYER AT THAT POSITION does.
+# A center's assists are judged against centers, a guard's rebounds vs guards.
+POS_BASE = {
+    "PG": {"PTS": (14.5, 5.5), "TRB": (3.6, 1.5), "AST": (5.8, 2.2),
+           "STL": (1.10, 0.40), "BLK": (0.30, 0.25), "TOV": (2.2, 0.80),
+           "TS_PCT": (0.560, 0.045), "MIN": (28.0, 5.5)},
+    "SG": {"PTS": (13.5, 5.5), "TRB": (3.8, 1.5), "AST": (3.0, 1.6),
+           "STL": (1.00, 0.35), "BLK": (0.35, 0.30), "TOV": (1.7, 0.70),
+           "TS_PCT": (0.560, 0.045), "MIN": (27.0, 5.5)},
+    "SF": {"PTS": (13.0, 5.5), "TRB": (5.0, 1.8), "AST": (2.8, 1.6),
+           "STL": (1.00, 0.35), "BLK": (0.45, 0.35), "TOV": (1.6, 0.70),
+           "TS_PCT": (0.565, 0.045), "MIN": (27.0, 5.5)},
+    "PF": {"PTS": (12.5, 5.5), "TRB": (6.5, 2.2), "AST": (2.3, 1.4),
+           "STL": (0.80, 0.30), "BLK": (0.70, 0.45), "TOV": (1.5, 0.65),
+           "TS_PCT": (0.575, 0.045), "MIN": (26.0, 5.5)},
+    "C":  {"PTS": (12.0, 5.5), "TRB": (8.5, 2.6), "AST": (2.0, 1.9),
+           "STL": (0.70, 0.30), "BLK": (1.30, 0.60), "TOV": (1.6, 0.65),
+           "TS_PCT": (0.605, 0.050), "MIN": (25.0, 5.5)},
+}
+POS_BLEND = 0.75          # 75% position-relative, 25% league-relative
+TERM_CAP = 3.0            # max |contribution| of any single stat
+SCORE_C, SCORE_M = 32.0, 6.0   # score = 32 + 6*WZ, clamped [5, 99]
+
+PRIME_START, PRIME_END = 25.0, 30.0
+YOUTH_RATE, YOUTH_CAP = 0.015, 1.06
+DECLINE, RESISTANCE, ELITE_WZ, AGE_FLOOR = 0.06, 0.60, 8.0, 0.68
+
+AVAIL_MEMORY = (0.70, 0.20, 0.10)   # this season, last, two back
+RECOVERY = 0.85                     # healthy 'now' restores most confidence
+SMALL_SAMPLE_GP = 15                # below this, talent carries forward
+CARRY_DECAY = 0.85
+SHRINK = {1: 0.35, 2: 0.15}         # rookie/sophomore pull toward prior
+PRIOR_VALUE = 40.0                  # league-average-starter asset value
+
+PRICE_K, PRICE_EXP, PRICE_FLOOR = 0.24, 1.62, 8.0
 SEASON_GAMES = {"2011-12": 66, "2019-20": 72, "2020-21": 72}
 
 
-def season_score(row):
+def weighted_z(row, pos):
+    """Position-blended, capped, volume-scaled weighted z-total."""
     wz = 0.0
+    vol = max(0.6, min(1.4, row["PTS"] / 22.0))   # efficiency scales w/ volume
     for stat, w in STAT_WEIGHTS.items():
-        mu, sd = BASE[stat]
-        wz += w * (row[stat] - mu) / sd
-    stats_score = max(5.0, min(99.0, 30.0 + 6.3 * wz))
+        mu_p, sd_p = POS_BASE[pos][stat]
+        mu_l, sd_l = LEAGUE_BASE[stat]
+        z = POS_BLEND * (row[stat] - mu_p) / sd_p \
+            + (1 - POS_BLEND) * (row[stat] - mu_l) / sd_l
+        eff_w = w * vol if stat == "TS_PCT" else w
+        wz += max(-TERM_CAP, min(TERM_CAP, eff_w * z))
+    return wz
 
-    age = row["AGE"]
-    elite = max(0.0, min(1.0, wz / ELITE_SD_Z))
-    eff_decline = DECLINE * (1.0 - RESISTANCE * elite)
-    if age <= PRIME:
-        age_f = min(1.0 + YOUTH_BONUS * (PRIME - age), YOUTH_CAP)
-    else:
-        age_f = math.exp(-eff_decline * (age - PRIME))
 
-    games = SEASON_GAMES.get(row["SEASON"], 82)
-    avail = min(1.0, row["GP"] / games) ** 0.5
+def age_factor(age, wz):
+    if age < PRIME_START:
+        return min(1.0 + YOUTH_RATE * (PRIME_START - age), YOUTH_CAP)
+    if age <= PRIME_END:
+        return 1.0
+    elite = max(0.0, min(1.0, wz / ELITE_WZ))
+    d = DECLINE * (1.0 - RESISTANCE * elite)
+    return max(AGE_FLOOR, math.exp(-d * (age - PRIME_END)))
 
-    value = stats_score * age_f * avail
-    price = max(8.0, 0.18 * value ** 1.7)
-    return round(stats_score, 1), round(age_f, 3), round(avail, 3), round(value, 1), round(price, 2)
+
+def score_career(rows):
+    """rows: list of per-season stat dicts (chronological).
+    Returns per-season (score, age_f, avail, value, price, carried)."""
+    # pass 1: talent (weighted z) + availability share, with carryover
+    shares, wzs, carried = [], [], []
+    for i, row in enumerate(rows):
+        games = SEASON_GAMES.get(row["SEASON"], 82)
+        shares.append(min(1.0, row["GP"] / games))
+        if row["GP"] < SMALL_SAMPLE_GP and i > 0:
+            wzs.append(wzs[i - 1] * CARRY_DECAY)   # injury != skill collapse
+            carried.append(True)
+        else:
+            wzs.append(weighted_z(row, row["POS"]))
+            carried.append(False)
+
+    # pass 2: factors, shrinkage, price
+    out = []
+    for i, row in enumerate(rows):
+        wz = wzs[i]
+        score = max(5.0, min(99.0, SCORE_C + SCORE_M * wz))
+        age_f = age_factor(row["AGE"], wz)
+
+        w0, w1, w2 = AVAIL_MEMORY
+        mem, wsum = w0 * shares[i], w0
+        if i >= 1:
+            mem, wsum = mem + w1 * shares[i - 1], wsum + w1
+        if i >= 2:
+            mem, wsum = mem + w2 * shares[i - 2], wsum + w2
+        mem = max(mem / wsum, RECOVERY * shares[i])
+        avail = min(1.0, mem) ** 0.5
+
+        value = score * age_f * avail
+        n = i + 1
+        if n in SHRINK:
+            value = (1 - SHRINK[n]) * value + SHRINK[n] * PRIOR_VALUE
+        price = max(PRICE_FLOOR, PRICE_K * value ** PRICE_EXP)
+        out.append((round(score, 1), round(age_f, 3), round(avail, 3),
+                    round(value, 1), round(price, 2), carried[i]))
+    return out
 
 
 def wiggle(pid, season_idx, step):
@@ -178,18 +269,22 @@ def main():
 
         seasons, series = [], []
         rows = career.reset_index(drop=True)
+        stat_rows = []
         for i, r in rows.iterrows():
             fga, fta, pts = float(r["FGA"]), float(r["FTA"]), float(r["PTS"])
             denom = 2.0 * (fga + 0.44 * fta)
             ts = pts / denom if denom > 0 else 0.0
-            row = {
+            stat_rows.append({
                 "SEASON": r["SEASON_ID"], "AGE": float(r["PLAYER_AGE"]),
                 "GP": int(r["GP"]), "MIN": float(r["MIN"]), "PTS": pts,
                 "TRB": float(r["REB"]), "AST": float(r["AST"]),
                 "STL": float(r["STL"]), "BLK": float(r["BLK"]),
-                "TOV": float(r["TOV"]), "TS_PCT": round(ts, 3),
-            }
-            s_score, age_f, avail, value, price = season_score(row)
+                "TOV": float(r["TOV"]), "TS_PCT": round(ts, 3), "POS": pos,
+            })
+        scored = score_career(stat_rows)
+        for i, (r, row) in enumerate(zip(rows.iterrows(), stat_rows)):
+            _, r = r
+            s_score, age_f, avail, value, price, was_carried = scored[i]
             seasons.append({
                 "season": r["SEASON_ID"], "team": r["TEAM_ABBREVIATION"],
                 "age": int(row["AGE"]), "gp": row["GP"], "min": row["MIN"],
@@ -197,6 +292,7 @@ def main():
                 "stl": row["STL"], "blk": row["BLK"], "tov": row["TOV"],
                 "ts": row["TS_PCT"], "score": s_score, "ageF": age_f,
                 "avail": avail, "value": value, "price": price,
+                "carried": was_carried,
             })
 
         # monthly price path: 8 steps/season, eased between season anchors
@@ -233,7 +329,8 @@ def main():
         2017: 19, 2018: -5, 2019: 29, 2020: 16, 2021: 27, 2022: -19,
         2023: 24, 2024: 23, 2025: 12,
     }
-    data = {"generated": "2026-07-02", "players": players, "spx": spx_returns}
+    data = {"generated": "2026-07-15", "model": "v2", "players": players,
+            "spx": spx_returns}
     js = "window.AGORA_DATA = " + json.dumps(data, separators=(",", ":")) + ";\n"
     (OUT / "players.js").write_text(js)
     print(f"\nWrote {OUT/'players.js'} ({len(players)} players, {len(js)//1024} KB)")

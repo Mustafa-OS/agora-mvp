@@ -481,7 +481,7 @@ function viewAthlete(id) {
   const grid = el("div", "breakdown");
   [
     ["Production score", last.score, 100, last.score.toFixed(0) + " / 100"],
-    ["Age runway ×" + last.ageF.toFixed(2), last.ageF, 1.15, "age " + last.age],
+    ["Age runway ×" + last.ageF.toFixed(2), last.ageF, 1.06, "age " + last.age],
     ["Availability ×" + last.avail.toFixed(2), last.avail, 1, last.gp + " games played"],
   ].forEach(([label, v, max, note]) => {
     const row = el("div", "meter-row");
@@ -873,9 +873,10 @@ function viewList() {
   right.appendChild(formula);
   const ml = el("ul", "method-list");
   [
-    "Production — per-game output (points, rebounds, assists, stocks, efficiency, minutes) scored against league baselines on a 0–100 scale. Turnovers subtract.",
-    "Age runway — value compounds until the prime (28), then declines ~10%/yr. Elite current production slows the decline (sustained greatness is rewarded, reputation is not), and youth carries an upside premium.",
-    "Availability — square root of games played. Missed seasons reprice the asset in real time; see Derrick Rose or Joel Embiid.",
+    "Production — per-game output scored against the athlete's own position (75%) blended with the league (25%), so a guard's profile competes fairly with a center's. Efficiency counts more at higher scoring volume; no single stat can dominate a score; turnovers subtract.",
+    "Age runway — a small premium for prospects under 25, full value through the 25–30 prime, then a gentle decline that elite current production slows by up to 60% (sustained greatness is rewarded, reputation is not). The factor never drops below 0.68 — proven stars stay investable.",
+    "Availability — square root of games played, remembered across three seasons with a fast-recovery clause. A short injured season craters availability, not the talent estimate — skill is carried forward, so an ACL reads as a drawdown, never a delisting.",
+    "Track record — first- and second-year valuations are shrunk toward a league-average prior, so one hot rookie season can't out-price a proven MVP.",
     "Price — value maps to a share price on a convex curve, so elite seasons separate sharply from good ones.",
     "Roadmap — a brand-signal layer (NIL deal comps, social reach, search interest) multiplies on top for off-court equity: the H2 hypothesis from our OAP I deck.",
   ].forEach(t => ml.appendChild(el("li", null, t)));
