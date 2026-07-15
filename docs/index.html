@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agora — The Athlete Brand Asset Market</title>
+<meta name="description" content="Agora MVP — a live demo where athlete brand value is priced like an asset. Explore careers as price histories, travel back in time, and build a portfolio.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2322c55e'/%3E%3Cpath d='M9 23 16 8l7 15h-3.4L16 15l-3.6 8z' fill='%230b0d10'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<a class="skip" href="#app">Skip to content</a>
+
+<header class="topbar">
+  <a class="brand" href="#/market" aria-label="Agora home">
+    <svg class="brand-glyph" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="7" fill="#22c55e"/><path d="M9 23 16 8l7 15h-3.4L16 15l-3.6 8z" fill="#0b0d10"/></svg>
+    <span class="brand-word">AGORA</span>
+  </a>
+  <nav class="nav" aria-label="Primary">
+    <a href="#/market" data-nav="market">Market</a>
+    <a href="#/machine" data-nav="machine">Time Machine</a>
+    <a href="#/portfolio" data-nav="portfolio">Portfolio <span class="nav-badge" id="portfolioCount" hidden></span></a>
+    <a href="#/list" data-nav="list">List with Agora</a>
+  </nav>
+  <span class="demo-chip" title="Built for ENGR145 OAP I">OAP&nbsp;I&nbsp;demo</span>
+</header>
+
+<div class="ticker" aria-hidden="true"><div class="ticker-track" id="tickerTrack"></div></div>
+
+<main id="app" tabindex="-1"></main>
+
+<footer class="footer">
+  <div class="footer-inner">
+    <p><strong>Agora</strong> · ENGR145 OAP I product demo. This is an educational <em>simulation</em>:
+    “share prices” are derived from a transparent valuation model over public on-court performance data
+    (production × age runway × availability). Nothing here is a security, an offer, or investment advice.</p>
+    <p class="footer-fine">Data: stats.nba.com via nba_api, careers through 2025-26. LeBron James &amp; Luka Dončić
+    season lines are close approximations (source gap). S&amp;P 500 comparison uses approximate annual returns.
+    Brand-signal valuation layer (NIL deals, social reach) is roadmap — see “List with Agora”.</p>
+  </div>
+</footer>
+
+<div class="tooltip" id="tooltip" role="status" hidden></div>
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script src="data/players.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
