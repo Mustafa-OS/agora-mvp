@@ -27,6 +27,7 @@ const initials = name => name.split(" ").map(w => w[0]).slice(0, 2).join("");
 const SHARES_OUT = 1e6; // fictional float per athlete, for market-cap texture
 
 /* ---------- S&P index ---------- */
+const SHOW_SPX = false;   // benchmark hidden for now — flip to true to restore
 const spxLevel = (() => {
   const lv = { 2003: 100 };
   for (let y = 2003; y <= 2026; y++) {
@@ -577,7 +578,7 @@ function viewMachine(params) {
   app.replaceChildren();
   const head = el("div", "view-head");
   head.appendChild(el("h1", null, "Time Machine"));
-  head.appendChild(el("p", null, "Pick an athlete, a season, and a stake — see what the market would have done to your money. Benchmarked against the S&P 500 over the identical window."));
+  head.appendChild(el("p", null, "Pick an athlete, a season, and a stake — see what the market would have done to your money." + (SHOW_SPX ? " Benchmarked against the S&P 500 over the identical window." : "")));
   app.appendChild(head);
 
   const panel = el("section", "panel");
@@ -640,7 +641,7 @@ function viewMachine(params) {
       ["CAGR", pct(sim.cagr, 1)],
       ["Peak value", money(sim.peakV)],
       ["Max drawdown", sim.dd.toFixed(0) + "%"],
-      ["Same $ in S&P 500", money(sim.spxEnd)],
+      ...(SHOW_SPX ? [["Same $ in S&P 500", money(sim.spxEnd)]] : []),
       ["Shares held", sim.shares.toFixed(1)],
     ].forEach(([l, v]) => {
       const d = el("div", "ms", l);
@@ -652,10 +653,10 @@ function viewMachine(params) {
 
     buildChart(result, [
       { name: p.name + " stake", color: "#16a34a", pts: sim.value },
-      { name: "S&P 500", color: "#3987e5", pts: sim.spx },
+      ...(SHOW_SPX ? [{ name: "S&P 500", color: "#3987e5", pts: sim.spx }] : []),
     ], {
-      height: 300, legend: true, endLabels: true, zeroBase: true,
-      ariaLabel: "Investment value versus S&P 500",
+      height: 300, legend: SHOW_SPX, endLabels: SHOW_SPX, zeroBase: true,
+      ariaLabel: SHOW_SPX ? "Investment value versus S&P 500" : "Investment value over time",
       tooltipRows: t => ({ title: (Math.floor(t)) + "–" + (Math.floor(t) + 1 + "").slice(2) + " season window" }),
     });
 
