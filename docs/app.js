@@ -873,11 +873,11 @@ function viewList() {
   right.appendChild(formula);
   const ml = el("ul", "method-list");
   [
-    "Production — per-game output scored against the athlete's own position (75%) blended with the league (25%), so a guard's profile competes fairly with a center's. Efficiency counts more at higher scoring volume; no single stat can dominate a score; turnovers subtract.",
-    "Age runway — a small premium for prospects under 25, full value through the 25–30 prime, then a gentle decline that elite current production slows by up to 60% (sustained greatness is rewarded, reputation is not). The factor never drops below 0.68 — proven stars stay investable.",
-    "Availability — square root of games played, remembered across three seasons with a fast-recovery clause. A short injured season craters availability, not the talent estimate — skill is carried forward, so an ACL reads as a drawdown, never a delisting.",
-    "Track record — first- and second-year valuations are shrunk toward a league-average prior, so one hot rookie season can't out-price a proven MVP.",
-    "Price — value maps to a share price on a convex curve, so elite seasons separate sharply from good ones.",
+    "Production — per-game output (including made threes) scored against the athlete's own position (75%) blended with the league (25%), so a guard's profile competes fairly with a center's. Efficiency counts more at higher scoring volume; no single stat can dominate a score; turnovers subtract.",
+    "Age runway — a small premium for prospects under 25, full value through the 25–30 prime, then a gentle decline that elite current production slows by up to 65% (sustained greatness is rewarded, reputation is not). The factor never drops below 0.75 — proven stars stay investable.",
+    "Availability — games played remembered across three seasons with a fast-recovery clause, discounting the price once. A short injured season is a drawdown, never a delisting: talent is carried forward through small samples, because an ACL doesn't make you worse at basketball.",
+    "Track record — first-, second- and third-year valuations are shrunk toward a league-average prior, so one hot rookie season can't out-price a proven MVP.",
+    "Price — only production above a replacement-level player has market value (the VORP idea), mapped to price on a convex curve. Stars separate sharply; role players stay cheap; early conviction gets paid — rookie Curry cost $78, peak Curry hit $341.",
     "Roadmap — a brand-signal layer (NIL deal comps, social reach, search interest) multiplies on top for off-court equity: the H2 hypothesis from our OAP I deck.",
   ].forEach(t => ml.appendChild(el("li", null, t)));
   right.appendChild(ml);

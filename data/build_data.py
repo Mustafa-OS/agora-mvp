@@ -68,31 +68,32 @@ ROSTER = [
 STAT_WEIGHTS = {
     "PTS": 1.00, "TRB": 0.70, "AST": 0.90, "STL": 0.80,
     "BLK": 0.80, "TOV": -0.70, "TS_PCT": 0.60, "MIN": 0.50,
+    "TPM": 0.35,   # made threes — spacing/gravity proxy the box score allows
 }
 # League baseline (per-game, rotation players; era-stable approximations).
 LEAGUE_BASE = {
     "PTS": (11.5, 6.0), "TRB": (4.4, 2.6), "AST": (2.6, 2.0),
     "STL": (0.75, 0.35), "BLK": (0.48, 0.45), "TOV": (1.5, 0.75),
-    "TS_PCT": (0.565, 0.045), "MIN": (24.0, 6.5),
+    "TS_PCT": (0.565, 0.045), "MIN": (24.0, 6.5), "TPM": (1.0, 0.9),
 }
 # Position baselines: what an average ROTATION PLAYER AT THAT POSITION does.
 # A center's assists are judged against centers, a guard's rebounds vs guards.
 POS_BASE = {
     "PG": {"PTS": (14.5, 5.5), "TRB": (3.6, 1.5), "AST": (5.8, 2.2),
            "STL": (1.10, 0.40), "BLK": (0.30, 0.25), "TOV": (2.2, 0.80),
-           "TS_PCT": (0.560, 0.045), "MIN": (28.0, 5.5)},
+           "TS_PCT": (0.560, 0.045), "MIN": (28.0, 5.5), "TPM": (1.8, 1.0)},
     "SG": {"PTS": (13.5, 5.5), "TRB": (3.8, 1.5), "AST": (3.0, 1.6),
            "STL": (1.00, 0.35), "BLK": (0.35, 0.30), "TOV": (1.7, 0.70),
-           "TS_PCT": (0.560, 0.045), "MIN": (27.0, 5.5)},
+           "TS_PCT": (0.560, 0.045), "MIN": (27.0, 5.5), "TPM": (1.9, 1.0)},
     "SF": {"PTS": (13.0, 5.5), "TRB": (5.0, 1.8), "AST": (2.8, 1.6),
            "STL": (1.00, 0.35), "BLK": (0.45, 0.35), "TOV": (1.6, 0.70),
-           "TS_PCT": (0.565, 0.045), "MIN": (27.0, 5.5)},
+           "TS_PCT": (0.565, 0.045), "MIN": (27.0, 5.5), "TPM": (1.5, 0.9)},
     "PF": {"PTS": (12.5, 5.5), "TRB": (6.5, 2.2), "AST": (2.3, 1.4),
            "STL": (0.80, 0.30), "BLK": (0.70, 0.45), "TOV": (1.5, 0.65),
-           "TS_PCT": (0.575, 0.045), "MIN": (26.0, 5.5)},
+           "TS_PCT": (0.575, 0.045), "MIN": (26.0, 5.5), "TPM": (1.0, 0.8)},
     "C":  {"PTS": (12.0, 5.5), "TRB": (8.5, 2.6), "AST": (2.0, 1.9),
            "STL": (0.70, 0.30), "BLK": (1.30, 0.60), "TOV": (1.6, 0.65),
-           "TS_PCT": (0.605, 0.050), "MIN": (25.0, 5.5)},
+           "TS_PCT": (0.605, 0.050), "MIN": (25.0, 5.5), "TPM": (0.4, 0.55)},
 }
 POS_BLEND = 0.75          # 75% position-relative, 25% league-relative
 TERM_CAP = 3.0            # max |contribution| of any single stat
@@ -100,16 +101,22 @@ SCORE_C, SCORE_M = 32.0, 6.0   # score = 32 + 6*WZ, clamped [5, 99]
 
 PRIME_START, PRIME_END = 25.0, 30.0
 YOUTH_RATE, YOUTH_CAP = 0.015, 1.06
-DECLINE, RESISTANCE, ELITE_WZ, AGE_FLOOR = 0.06, 0.60, 8.0, 0.68
+DECLINE, RESISTANCE, ELITE_WZ, AGE_FLOOR = 0.055, 0.65, 8.0, 0.75
 
-AVAIL_MEMORY = (0.70, 0.20, 0.10)   # this season, last, two back
+AVAIL_MEMORY = (0.75, 0.15, 0.10)   # this season, last, two back
 RECOVERY = 0.85                     # healthy 'now' restores most confidence
 SMALL_SAMPLE_GP = 15                # below this, talent carries forward
 CARRY_DECAY = 0.85
-SHRINK = {1: 0.35, 2: 0.15}         # rookie/sophomore pull toward prior
+SHRINK = {1: 0.40, 2: 0.22, 3: 0.12}   # thin-track-record pull toward prior
 PRIOR_VALUE = 40.0                  # league-average-starter asset value
 
-PRICE_K, PRICE_EXP, PRICE_FLOOR = 0.24, 1.62, 8.0
+# Replacement-surplus pricing: only production ABOVE a replacement-level
+# player has market value (the VORP/WAR idea). Availability discounts the
+# PRICE once (mem^AVAIL_PRICE_EXP) instead of being squared into value —
+# injuries discount the asset, they don't redefine the player.
+V_REPLACEMENT = 20.0
+AVAIL_PRICE_EXP = 0.40
+PRICE_K, PRICE_EXP, PRICE_FLOOR = 0.28, 1.70, 8.0
 SEASON_GAMES = {"2011-12": 66, "2019-20": 72, "2020-21": 72}
 
 
@@ -152,7 +159,7 @@ def score_career(rows):
             wzs.append(weighted_z(row, row["POS"]))
             carried.append(False)
 
-    # pass 2: factors, shrinkage, price
+    # pass 2: factors, shrinkage, replacement-surplus price
     out = []
     for i, row in enumerate(rows):
         wz = wzs[i]
@@ -165,14 +172,18 @@ def score_career(rows):
             mem, wsum = mem + w1 * shares[i - 1], wsum + w1
         if i >= 2:
             mem, wsum = mem + w2 * shares[i - 2], wsum + w2
-        mem = max(mem / wsum, RECOVERY * shares[i])
-        avail = min(1.0, mem) ** 0.5
+        mem = min(1.0, max(mem / wsum, RECOVERY * shares[i]))
+        avail = mem ** 0.5
 
-        value = score * age_f * avail
+        prod = score * age_f                  # production asset value
         n = i + 1
-        if n in SHRINK:
-            value = (1 - SHRINK[n]) * value + SHRINK[n] * PRIOR_VALUE
-        price = max(PRICE_FLOOR, PRICE_K * value ** PRICE_EXP)
+        if n in SHRINK:                       # thin track record -> prior
+            prod = (1 - SHRINK[n]) * prod + SHRINK[n] * PRIOR_VALUE
+        value = prod * avail                  # reported composite value
+
+        surplus = max(0.0, prod - V_REPLACEMENT)
+        price = PRICE_K * surplus ** PRICE_EXP * mem ** AVAIL_PRICE_EXP
+        price = max(PRICE_FLOOR, price)
         out.append((round(score, 1), round(age_f, 3), round(avail, 3),
                     round(value, 1), round(price, 2), carried[i]))
     return out
@@ -186,42 +197,42 @@ def wiggle(pid, season_idx, step):
 
 # Fallback career lines for players the endpoint currently returns empty for
 # (stats.nba.com data gap). Public career per-game stats, close-approximate.
-# (season, team, age, gp, min, pts, reb, ast, stl, blk, tov, ts)
+# (season, team, age, gp, min, pts, reb, ast, stl, blk, tov, ts, 3pm)
 CURATED = {
     2544: [  # LeBron James
-        ("2003-04","CLE",19,79,39.5,20.9,5.5,5.9,1.6,0.7,3.5,.488),
-        ("2004-05","CLE",20,80,42.4,27.2,7.4,7.2,2.2,0.7,3.3,.554),
-        ("2005-06","CLE",21,79,42.5,31.4,7.0,6.6,1.6,0.8,3.3,.568),
-        ("2006-07","CLE",22,78,40.9,27.3,6.7,6.0,1.6,0.7,3.2,.552),
-        ("2007-08","CLE",23,75,40.4,30.0,7.9,7.2,1.8,1.1,3.4,.568),
-        ("2008-09","CLE",24,81,37.7,28.4,7.6,7.2,1.7,1.1,3.0,.591),
-        ("2009-10","CLE",25,76,39.0,29.7,7.3,8.6,1.6,1.0,3.4,.604),
-        ("2010-11","MIA",26,79,38.8,26.7,7.5,7.0,1.6,0.6,3.6,.594),
-        ("2011-12","MIA",27,62,37.5,27.1,7.9,6.2,1.9,0.8,3.4,.605),
-        ("2012-13","MIA",28,76,37.9,26.8,8.0,7.3,1.7,0.9,3.0,.640),
-        ("2013-14","MIA",29,77,37.7,27.1,6.9,6.3,1.6,0.3,3.5,.649),
-        ("2014-15","CLE",30,69,36.1,25.3,6.0,7.4,1.6,0.7,3.9,.577),
-        ("2015-16","CLE",31,76,35.6,25.3,7.4,6.8,1.4,0.6,3.3,.588),
-        ("2016-17","CLE",32,74,37.8,26.4,8.6,8.7,1.2,0.6,4.1,.619),
-        ("2017-18","CLE",33,82,36.9,27.5,8.6,9.1,1.4,0.9,4.2,.621),
-        ("2018-19","LAL",34,55,35.2,27.4,8.5,8.3,1.3,0.6,3.6,.588),
-        ("2019-20","LAL",35,67,34.6,25.3,7.8,10.2,1.2,0.5,3.9,.577),
-        ("2020-21","LAL",36,45,33.4,25.0,7.7,7.8,1.1,0.6,3.7,.602),
-        ("2021-22","LAL",37,56,37.2,30.3,8.2,6.2,1.3,1.1,3.5,.619),
-        ("2022-23","LAL",38,55,35.5,28.9,8.3,6.8,0.9,0.6,3.2,.583),
-        ("2023-24","LAL",39,71,35.3,25.7,7.3,8.3,1.3,0.5,3.5,.630),
-        ("2024-25","LAL",40,70,34.9,24.4,7.8,8.2,1.0,0.6,3.7,.601),
-        ("2025-26","LAL",41,55,32.0,21.5,6.8,7.4,0.9,0.5,3.0,.580),
+        ("2003-04","CLE",19,79,39.5,20.9,5.5,5.9,1.6,0.7,3.5,.488,0.8),
+        ("2004-05","CLE",20,80,42.4,27.2,7.4,7.2,2.2,0.7,3.3,.554,1.4),
+        ("2005-06","CLE",21,79,42.5,31.4,7.0,6.6,1.6,0.8,3.3,.568,1.6),
+        ("2006-07","CLE",22,78,40.9,27.3,6.7,6.0,1.6,0.7,3.2,.552,1.3),
+        ("2007-08","CLE",23,75,40.4,30.0,7.9,7.2,1.8,1.1,3.4,.568,1.5),
+        ("2008-09","CLE",24,81,37.7,28.4,7.6,7.2,1.7,1.1,3.0,.591,1.6),
+        ("2009-10","CLE",25,76,39.0,29.7,7.3,8.6,1.6,1.0,3.4,.604,1.7),
+        ("2010-11","MIA",26,79,38.8,26.7,7.5,7.0,1.6,0.6,3.6,.594,1.2),
+        ("2011-12","MIA",27,62,37.5,27.1,7.9,6.2,1.9,0.8,3.4,.605,0.9),
+        ("2012-13","MIA",28,76,37.9,26.8,8.0,7.3,1.7,0.9,3.0,.640,1.4),
+        ("2013-14","MIA",29,77,37.7,27.1,6.9,6.3,1.6,0.3,3.5,.649,1.5),
+        ("2014-15","CLE",30,69,36.1,25.3,6.0,7.4,1.6,0.7,3.9,.577,1.7),
+        ("2015-16","CLE",31,76,35.6,25.3,7.4,6.8,1.4,0.6,3.3,.588,1.1),
+        ("2016-17","CLE",32,74,37.8,26.4,8.6,8.7,1.2,0.6,4.1,.619,1.7),
+        ("2017-18","CLE",33,82,36.9,27.5,8.6,9.1,1.4,0.9,4.2,.621,1.8),
+        ("2018-19","LAL",34,55,35.2,27.4,8.5,8.3,1.3,0.6,3.6,.588,2.0),
+        ("2019-20","LAL",35,67,34.6,25.3,7.8,10.2,1.2,0.5,3.9,.577,2.2),
+        ("2020-21","LAL",36,45,33.4,25.0,7.7,7.8,1.1,0.6,3.7,.602,2.3),
+        ("2021-22","LAL",37,56,37.2,30.3,8.2,6.2,1.3,1.1,3.5,.619,2.9),
+        ("2022-23","LAL",38,55,35.5,28.9,8.3,6.8,0.9,0.6,3.2,.583,2.2),
+        ("2023-24","LAL",39,71,35.3,25.7,7.3,8.3,1.3,0.5,3.5,.630,2.1),
+        ("2024-25","LAL",40,70,34.9,24.4,7.8,8.2,1.0,0.6,3.7,.601,1.9),
+        ("2025-26","LAL",41,55,32.0,21.5,6.8,7.4,0.9,0.5,3.0,.580,1.7),
     ],
     1629029: [  # Luka Doncic
-        ("2018-19","DAL",19,72,32.2,21.2,7.8,6.0,1.1,0.3,3.4,.545),
-        ("2019-20","DAL",20,61,33.6,28.8,9.4,8.8,1.0,0.2,4.3,.585),
-        ("2020-21","DAL",21,66,34.3,27.7,8.0,8.6,1.0,0.5,4.3,.589),
-        ("2021-22","DAL",22,65,35.4,28.4,9.1,8.7,1.2,0.6,4.5,.571),
-        ("2022-23","DAL",23,66,36.2,32.4,8.6,8.0,1.4,0.5,3.6,.610),
-        ("2023-24","DAL",24,70,37.5,33.9,9.2,9.8,1.4,0.5,4.0,.617),
-        ("2024-25","LAL",25,50,35.4,28.2,8.2,7.7,1.8,0.5,3.6,.580),
-        ("2025-26","LAL",26,65,35.5,30.5,8.5,8.5,1.5,0.5,3.5,.600),
+        ("2018-19","DAL",19,72,32.2,21.2,7.8,6.0,1.1,0.3,3.4,.545,2.3),
+        ("2019-20","DAL",20,61,33.6,28.8,9.4,8.8,1.0,0.2,4.3,.585,2.8),
+        ("2020-21","DAL",21,66,34.3,27.7,8.0,8.6,1.0,0.5,4.3,.589,2.9),
+        ("2021-22","DAL",22,65,35.4,28.4,9.1,8.7,1.2,0.6,4.5,.571,3.1),
+        ("2022-23","DAL",23,66,36.2,32.4,8.6,8.0,1.4,0.5,3.6,.610,2.8),
+        ("2023-24","DAL",24,70,37.5,33.9,9.2,9.8,1.4,0.5,4.0,.617,3.6),
+        ("2024-25","LAL",25,50,35.4,28.2,8.2,7.7,1.8,0.5,3.6,.580,2.8),
+        ("2025-26","LAL",26,65,35.5,30.5,8.5,8.5,1.5,0.5,3.5,.600,3.0),
     ],
 }
 
@@ -229,7 +240,7 @@ CURATED = {
 def curated_career(pid):
     rows = CURATED[pid]
     df = pd.DataFrame(rows, columns=["SEASON_ID","TEAM_ABBREVIATION","PLAYER_AGE",
-                                     "GP","MIN","PTS","REB","AST","STL","BLK","TOV","TS"])
+                                     "GP","MIN","PTS","REB","AST","STL","BLK","TOV","TS","FG3M"])
     # synthesize FGA/FTA so the TS computation reproduces the given TS:
     # set FTA=0, FGA = PTS / (2*TS)
     df["FTA"] = 0.0
@@ -279,7 +290,8 @@ def main():
                 "GP": int(r["GP"]), "MIN": float(r["MIN"]), "PTS": pts,
                 "TRB": float(r["REB"]), "AST": float(r["AST"]),
                 "STL": float(r["STL"]), "BLK": float(r["BLK"]),
-                "TOV": float(r["TOV"]), "TS_PCT": round(ts, 3), "POS": pos,
+                "TOV": float(r["TOV"]), "TS_PCT": round(ts, 3),
+                "TPM": float(r.get("FG3M", 0.0) or 0.0), "POS": pos,
             })
         scored = score_career(stat_rows)
         for i, (r, row) in enumerate(zip(rows.iterrows(), stat_rows)):
