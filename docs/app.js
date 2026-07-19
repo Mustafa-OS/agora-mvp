@@ -43,16 +43,107 @@ const spxLevel = (() => {
   };
 })();
 
-/* ---------- portfolio store ---------- */
+/* ================================================================
+   Market layer — the engine SUGGESTS a fair value; the MARKET sets
+   the traded price. Each athlete gets a deterministic sentiment
+   premium/discount vs fair value; any trade you make becomes the
+   new last-traded price (stored in this browser).
+   ================================================================ */
+function sentiment(id) {
+  const x = Math.sin(id * 12.9898) * 43758.5453;
+  return ((x - Math.floor(x)) - 0.45) * 0.16;   // ≈ −7% … +9%
+}
+const marketStore = {
+  read() { try { return JSON.parse(localStorage.getItem("agora_market")) || {}; } catch { return {}; } },
+  write(v) { localStorage.setItem("agora_market", JSON.stringify(v)); },
+  setLastTrade(key, price) { const m = this.read(); m[key] = +(+price).toFixed(2); this.write(m); },
+};
+const fairValue = p => p.price;
+const lastTrade = p => {
+  const m = marketStore.read();
+  return m[p.id] ?? +(p.price * (1 + sentiment(p.id))).toFixed(2);
+};
+const premium = p => (lastTrade(p) / fairValue(p) - 1) * 100;
+const premChip = p => {
+  const pr = premium(p);
+  const cls = Math.abs(pr) < 0.5 ? "" : pr > 0 ? "pos" : "neg";
+  const label = Math.abs(pr) < 0.5 ? "at fair value"
+    : Math.abs(pr).toFixed(0) + "% " + (pr > 0 ? "above" : "below") + " fair value";
+  const s = el("span", "fv-chip " + cls, label);
+  return s;
+};
+
+/* ---------- index baskets (ETF-style) ---------- */
+const BASKETS = [
+  { key: "AGX17", name: "Agora 17 Index", desc: "Every listed athlete, equal weight — own the whole board in one click.", filter: () => true },
+  { key: "BLUE", name: "Blue Chip Basket", desc: "Proven superstars only. Lower beta, championship pedigree.", filter: p => p.tag === "Blue chip" },
+  { key: "GRWTH", name: "Growth Basket", desc: "Rising stars and recent IPOs — the upside sleeve.", filter: p => p.tag === "Growth" || p.tag === "IPO" },
+];
+const basketMembers = b => P.filter(b.filter);
+const basketPrice = b => {
+  const m = basketMembers(b);
+  return m.reduce((a, p) => a + lastTrade(p), 0) / m.length;
+};
+const basketFair = b => {
+  const m = basketMembers(b);
+  return m.reduce((a, p) => a + fairValue(p), 0) / m.length;
+};
+const basketChange = b => {
+  const m = basketMembers(b);
+  return m.reduce((a, p) => a + p.change, 0) / m.length;
+};
+const byBasket = Object.fromEntries(BASKETS.map(b => [b.key, b]));
+
+/* ---------- portfolio store (trade ledger, avg-cost) ---------- */
 const store = {
-  read() { try { return JSON.parse(localStorage.getItem("agora_portfolio")) || []; } catch { return []; } },
-  write(v) { localStorage.setItem("agora_portfolio", JSON.stringify(v)); refreshBadge(); },
-  add(pid, season, amt) { const v = this.read(); v.push({ pid, season, amt }); this.write(v); },
-  remove(i) { const v = this.read(); v.splice(i, 1); this.write(v); },
-  clear() { this.write([]); },
+  read() {
+    try {
+      const v2 = JSON.parse(localStorage.getItem("agora_portfolio_v2"));
+      if (v2 && Array.isArray(v2.trades)) return v2;
+    } catch { /* fall through */ }
+    // migrate v1 entries ({pid, season, amt}) into buy trades at entry price
+    let trades = [];
+    try {
+      const v1 = JSON.parse(localStorage.getItem("agora_portfolio")) || [];
+      trades = v1.map(it => {
+        const p = byId[it.pid];
+        if (!p) return null;
+        const entry = priceAtOrAfter(p, it.season);
+        return { kind: "buy", type: "ath", id: it.pid, shares: +(it.amt / entry).toFixed(4),
+                 price: entry, season: it.season };
+      }).filter(Boolean);
+    } catch { trades = []; }
+    return { trades };
+  },
+  write(v) { localStorage.setItem("agora_portfolio_v2", JSON.stringify(v)); refreshBadge(); },
+  trade(t) { const v = this.read(); v.trades.push(t); this.write(v); },
+  clear() { this.write({ trades: [] }); },
+  positions() {
+    const pos = {};
+    let realized = 0;
+    this.read().trades.forEach(t => {
+      const key = t.type + ":" + t.id;
+      const p = pos[key] || (pos[key] = { type: t.type, id: t.id, shares: 0, cost: 0, season: t.season });
+      if (t.kind === "buy") { p.shares += t.shares; p.cost += t.shares * t.price; }
+      else {
+        const q = Math.min(t.shares, p.shares);
+        if (p.shares > 0) {
+          const avg = p.cost / p.shares;
+          realized += (t.price - avg) * q;
+          p.cost -= avg * q; p.shares -= q;
+        }
+      }
+    });
+    const list = Object.values(pos).filter(p => p.shares > 1e-6);
+    return { list, realized };
+  },
+  owned(type, id) {
+    const hit = this.positions().list.find(p => p.type === type && p.id === id);
+    return hit || { shares: 0, cost: 0 };
+  },
 };
 function refreshBadge() {
-  const n = store.read().length;
+  const n = store.positions().list.length;
   const b = $("#portfolioCount");
   b.hidden = n === 0;
   b.textContent = n;
@@ -279,7 +370,7 @@ function buildTicker() {
     const s = el("span", "tick-item");
     const b = el("b", null, tickerSym(p.name));
     s.appendChild(b);
-    s.appendChild(document.createTextNode(money(p.price) + " "));
+    s.appendChild(document.createTextNode(money(lastTrade(p)) + " "));
     const d = el("span", "delta " + (p.change >= 0 ? "pos" : "neg"), arrow(p.change) + " " + pct(p.change));
     s.appendChild(d);
     track.appendChild(s);
@@ -291,7 +382,7 @@ const tickerSym = name => name.split(" ").pop().slice(0, 4).toUpperCase();
 const app = $("#app");
 
 function heroTiles() {
-  const totalCap = P.reduce((a, p) => a + p.price * SHARES_OUT, 0);
+  const totalCap = P.reduce((a, p) => a + lastTrade(p) * SHARES_OUT, 0);
   // best 5-season runner
   let best = null;
   P.forEach(p => {
@@ -318,7 +409,7 @@ function viewMarket() {
   h1.append("Tomorrow's greatest athletes, ", (() => { const e = el("em", null, "today."); return e; })());
   hero.appendChild(h1);
   hero.appendChild(el("p", null,
-    "Agora turns athlete brand equity into a tradable asset class. This demo prices 17 real careers with a transparent valuation engine — explore each career like a stock, rewind time, and see what disciplined athlete investing would have returned."));
+    "An emerging asset class: shares in an athlete's future lifetime earnings. Our engine suggests a transparent fair value for 17 real careers — then the market trades around it, just like any exchange. Robinhood opened stocks. Coinbase opened crypto. Agora opens athletes."));
   const tiles = el("div", "tiles");
   heroTiles().forEach(t => {
     const tile = el("div", "tile");
@@ -334,6 +425,41 @@ function viewMarket() {
   });
   hero.appendChild(tiles);
   app.appendChild(hero);
+
+  // index baskets (ETF-style)
+  const bkSection = el("section");
+  const bkHead = el("div", "view-head bk-head");
+  bkHead.appendChild(el("h2", null, "Index baskets"));
+  bkHead.appendChild(el("p", "sub", "Don't want to pick one athlete? Own a slice of many — diversifies single-athlete injury risk."));
+  bkSection.appendChild(bkHead);
+  const bkRow = el("div", "baskets");
+  BASKETS.forEach(b => {
+    const card = el("div", "basket panel");
+    const top = el("div", "bk-top");
+    top.appendChild(el("span", "tag", b.key));
+    top.appendChild(el("span", "sub", basketMembers(b).length + " athletes"));
+    card.appendChild(top);
+    card.appendChild(el("h3", null, b.name));
+    card.appendChild(el("p", "sub", b.desc));
+    const priceRow = el("div", "bk-price");
+    priceRow.appendChild(el("b", null, money(basketPrice(b))));
+    const ch = basketChange(b);
+    priceRow.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
+    card.appendChild(priceRow);
+    card.appendChild(el("div", "sub", "Fair value " + money(basketFair(b)) + " per unit"));
+    const btn = el("button", "btn small", "Buy 1 unit · " + money(basketPrice(b)));
+    btn.addEventListener("click", e => {
+      e.stopPropagation();
+      store.trade({ kind: "buy", type: "basket", id: b.key, shares: 1, price: basketPrice(b) });
+      toast("Bought 1 unit of " + b.name + " at " + money(basketPrice(b)));
+    });
+    const br = el("div", "btn-row");
+    br.appendChild(btn);
+    card.appendChild(br);
+    bkRow.appendChild(card);
+  });
+  bkSection.appendChild(bkRow);
+  app.appendChild(bkSection);
 
   // controls
   const controls = el("div", "controls");
@@ -354,7 +480,7 @@ function viewMarket() {
   controls.appendChild(search);
   const sort = el("select", "select");
   sort.setAttribute("aria-label", "Sort by");
-  [["price", "Price"], ["change", "Change"], ["peak", "Career peak"], ["name", "Name"]].forEach(([v, l]) => {
+  [["price", "Last trade"], ["change", "Change"], ["peak", "Career peak"], ["name", "Name"]].forEach(([v, l]) => {
     const o = el("option", null, "Sort: " + l); o.value = v; sort.appendChild(o);
   });
   sort.value = state.marketSort || "price";
@@ -371,14 +497,16 @@ function viewMarket() {
       (!q || p.name.toLowerCase().includes(q)));
     const key = state.marketSort || "price";
     rows = rows.slice().sort((a, b) =>
-      key === "name" ? a.name.localeCompare(b.name) : b[key] - a[key]);
+      key === "name" ? a.name.localeCompare(b.name)
+      : key === "price" ? lastTrade(b) - lastTrade(a)
+      : b[key] - a[key]);
 
     tableWrap.replaceChildren();
     const table = el("table", "market-table");
     const thead = el("thead");
     const hr = el("tr");
-    [["", "hide-sm"], ["Athlete", ""], ["", "hide-sm"], ["Price", "num"], ["1-season", "num"],
-     ["Trend", "num hide-sm"], ["Mkt cap", "num hide-sm"], ["Listed", "num hide-sm"]].forEach(([t, cls]) => {
+    [["", "hide-sm"], ["Athlete", ""], ["", "hide-sm"], ["Last trade", "num"], ["Fair value", "num hide-sm"],
+     ["Vs fair", "num hide-sm"], ["1-season", "num"], ["Trend", "num hide-sm"], ["Mkt cap", "num hide-sm"]].forEach(([t, cls]) => {
       const th = el("th", cls || null, t); hr.appendChild(th);
     });
     thead.appendChild(hr);
@@ -405,15 +533,20 @@ function viewMarket() {
       const tagTd = el("td", "hide-sm");
       tagTd.appendChild(el("span", "tag", p.tag));
       tr.appendChild(tagTd);
-      tr.appendChild(el("td", "num", money(p.price)));
+      const lt = el("td", "num");
+      lt.appendChild(el("b", null, money(lastTrade(p))));
+      tr.appendChild(lt);
+      tr.appendChild(el("td", "num hide-sm", money(fairValue(p))));
+      const pr = el("td", "num hide-sm");
+      pr.appendChild(premChip(p));
+      tr.appendChild(pr);
       const d = el("td", "num");
       d.appendChild(el("span", "delta " + (p.change >= 0 ? "pos" : "neg"), arrow(p.change) + " " + pct(p.change)));
       tr.appendChild(d);
       const sp = el("td", "num hide-sm");
       sp.appendChild(sparkline(p.seasons));
       tr.appendChild(sp);
-      tr.appendChild(el("td", "num hide-sm", compact(p.price * SHARES_OUT)));
-      tr.appendChild(el("td", "num hide-sm", p.from.slice(0, 4)));
+      tr.appendChild(el("td", "num hide-sm", compact(lastTrade(p) * SHARES_OUT)));
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -445,9 +578,14 @@ function viewAthlete(id) {
   nameBox.appendChild(meta);
   head.appendChild(nameBox);
   const priceBox = el("div", "ath-price");
-  priceBox.appendChild(el("div", "p", money(p.price)));
+  priceBox.appendChild(el("div", "p", money(lastTrade(p))));
+  priceBox.appendChild(el("div", "d sub", "last traded price"));
+  const fvLine = el("div", "d fv-line");
+  fvLine.appendChild(document.createTextNode("Agora fair value " + money(fairValue(p)) + " · "));
+  fvLine.appendChild(premChip(p));
+  priceBox.appendChild(fvLine);
   priceBox.appendChild(el("div", "d delta " + (p.change >= 0 ? "pos" : "neg"),
-    arrow(p.change) + " " + pct(p.change) + " last season"));
+    arrow(p.change) + " " + pct(p.change) + " fair value vs last season"));
   head.appendChild(priceBox);
   app.appendChild(head);
 
@@ -455,8 +593,8 @@ function viewAthlete(id) {
 
   // price chart
   const chartPanel = el("section", "panel");
-  chartPanel.appendChild(el("h2", null, "Career price history"));
-  chartPanel.appendChild(el("p", "sub", "Model-derived brand asset price · " + p.from + " – " + p.seasons[p.seasons.length - 1].season + " · hover or focus + arrow keys to inspect"));
+  chartPanel.appendChild(el("h2", null, "Career fair-value history"));
+  chartPanel.appendChild(el("p", "sub", "The engine's suggested fair value, season by season · " + p.from + " – " + p.seasons[p.seasons.length - 1].season + " · hover or focus + arrow keys to inspect"));
   buildChart(chartPanel, [{ name: p.name, color: "#16a34a", pts: p.series }], {
     height: 320,
     annotatePeak: true,
@@ -477,8 +615,8 @@ function viewAthlete(id) {
   // valuation breakdown
   const last = p.seasons[p.seasons.length - 1];
   const bd = el("section", "panel");
-  bd.appendChild(el("h2", null, "Why this price — valuation breakdown"));
-  bd.appendChild(el("p", "sub", "Latest season (" + last.season + ") through the engine: production × age runway × availability → " + money(last.price)));
+  bd.appendChild(el("h2", null, "Why this fair value — the engine's suggested price"));
+  bd.appendChild(el("p", "sub", "Latest season (" + last.season + ") through the engine: production × age runway × availability → " + money(last.price) + ". Agora suggests the fair value; buyers and sellers set the traded price."));
   const grid = el("div", "breakdown");
   [
     ["Production score", last.score, 100, last.score.toFixed(0) + " / 100"],
@@ -499,19 +637,67 @@ function viewAthlete(id) {
   });
   bd.appendChild(grid);
   const btnRow = el("div", "btn-row");
-  const tmBtn = el("button", "btn", "▸ Open in Time Machine");
+  const tmBtn = el("button", "btn ghost", "▸ Open in Time Machine");
   tmBtn.addEventListener("click", () => {
     location.hash = "#/machine?id=" + p.id + "&season=" + encodeURIComponent(p.seasons[0].season) + "&amt=1000";
   });
-  const pfBtn = el("button", "btn ghost", "+ Add to portfolio at " + money(p.price));
-  pfBtn.addEventListener("click", () => {
-    store.add(p.id, last.season, 1000);
-    toast("Added $1,000 of " + p.name + " (" + last.season + ")");
-  });
   btnRow.appendChild(tmBtn);
-  btnRow.appendChild(pfBtn);
   bd.appendChild(btnRow);
   app.appendChild(bd);
+
+  // trade panel — buy/sell at ANY price, like a real market
+  const tp = el("section", "panel");
+  tp.appendChild(el("h2", null, "Trade"));
+  tp.appendChild(el("p", "sub", "Set your own price — the market, not the model, decides what " + p.name.split(" ").pop() + " is worth. Your trade becomes the new last-traded price."));
+  const tc = el("div", "tm-controls");
+  const mkF = (labelText, control) => {
+    const f = el("div", "field");
+    f.appendChild(el("label", null, labelText));
+    f.appendChild(control);
+    return f;
+  };
+  const priceIn = el("input", "amount");
+  priceIn.type = "number"; priceIn.min = 1; priceIn.step = 0.5;
+  priceIn.value = lastTrade(p).toFixed(2);
+  const qtyIn = el("input", "amount");
+  qtyIn.type = "number"; qtyIn.min = 0.5; qtyIn.step = 0.5; qtyIn.value = 5;
+  const totalOut = el("div", "trade-total");
+  const holding = el("p", "sub");
+  const updateMeta = () => {
+    const q = Math.max(0, Number(qtyIn.value) || 0), pr = Math.max(0, Number(priceIn.value) || 0);
+    totalOut.textContent = "Total " + money(q * pr);
+    const own = store.owned("ath", p.id);
+    holding.textContent = own.shares > 0
+      ? "You own " + own.shares.toFixed(1) + " shares · avg cost " + money(own.cost / own.shares)
+      : "You own no shares yet.";
+  };
+  const buyBtn = el("button", "btn", "Buy");
+  const sellBtn = el("button", "btn ghost", "Sell");
+  const doTrade = kind => {
+    const q = Number(qtyIn.value) || 0, pr = Number(priceIn.value) || 0;
+    if (q <= 0 || pr <= 0) { toast("Enter a price and quantity"); return; }
+    if (kind === "sell" && store.owned("ath", p.id).shares < q - 1e-9) {
+      toast("You only own " + store.owned("ath", p.id).shares.toFixed(1) + " shares"); return;
+    }
+    store.trade({ kind, type: "ath", id: p.id, shares: q, price: pr });
+    marketStore.setLastTrade(p.id, pr);
+    buildTicker();
+    toast((kind === "buy" ? "Bought " : "Sold ") + q + " shares of " + p.name + " at " + money(pr));
+    viewAthlete(p.id);
+  };
+  buyBtn.addEventListener("click", () => doTrade("buy"));
+  sellBtn.addEventListener("click", () => doTrade("sell"));
+  priceIn.addEventListener("input", updateMeta);
+  qtyIn.addEventListener("input", updateMeta);
+  tc.appendChild(mkF("Your price ($)", priceIn));
+  tc.appendChild(mkF("Shares", qtyIn));
+  tc.appendChild(totalOut);
+  tc.appendChild(buyBtn);
+  tc.appendChild(sellBtn);
+  tp.appendChild(tc);
+  tp.appendChild(holding);
+  updateMeta();
+  app.appendChild(tp);
 
   // seasons table
   const st = el("section", "panel");
@@ -665,7 +851,8 @@ function viewMachine(params) {
     const btnRow = el("div", "btn-row");
     const add = el("button", "btn ghost", "+ Add this trade to portfolio");
     add.addEventListener("click", () => {
-      store.add(p.id, sim.entry.season, amt);
+      store.trade({ kind: "buy", type: "ath", id: p.id, shares: +sim.shares.toFixed(4),
+                    price: sim.entry.price, season: sim.entry.season });
       toast("Added: " + money(amt) + " of " + p.name + " @ " + sim.entry.season);
     });
     btnRow.appendChild(add);
@@ -694,101 +881,96 @@ function viewPortfolio() {
   app.replaceChildren();
   const head = el("div", "view-head");
   head.appendChild(el("h1", null, "Your portfolio"));
-  head.appendChild(el("p", null, "Positions persist in your browser. Entry prices are the model price for the season you bought; current value marks to today's price."));
+  head.appendChild(el("p", null, "A ledger of your trades, marked to the last traded price. Returns come two ways: the value of your shares as the brand grows, and — on the roadmap — dividend-style payouts from the athlete's actual brand income."));
   app.appendChild(head);
 
-  const items = store.read();
-  if (!items.length) {
+  const { list, realized } = store.positions();
+  if (!list.length) {
     const emp = el("div", "empty");
-    emp.appendChild(el("p", null, "No positions yet."));
-    const b = el("button", "btn", "Open the Time Machine");
-    b.addEventListener("click", () => { location.hash = "#/machine"; });
-    emp.appendChild(b);
+    emp.appendChild(el("p", null, "No positions yet. Buy an athlete at any price you like, or grab an index basket on the market page."));
+    const b = el("button", "btn", "Open the market");
+    b.addEventListener("click", () => { location.hash = "#/market"; });
+    const b2 = el("button", "btn ghost", "Open the Time Machine");
+    b2.addEventListener("click", () => { location.hash = "#/machine"; });
+    const row = el("div", "btn-row");
+    row.appendChild(b); row.appendChild(b2);
+    emp.appendChild(row);
     app.appendChild(emp);
     return;
   }
 
-  let totalIn = 0, totalNow = 0;
-  const rows = items.map((it, i) => {
-    const p = byId[it.pid];
-    const entry = priceAtOrAfter(p, it.season);
-    const shares = it.amt / entry;
-    const now = shares * p.price;
-    totalIn += it.amt; totalNow += now;
-    return { i, p, it, entry, shares, now };
-  });
+  const rows = list.map(pos => {
+    const isBasket = pos.type === "basket";
+    const asset = isBasket ? byBasket[pos.id] : byId[pos.id];
+    const mark = isBasket ? basketPrice(asset) : lastTrade(asset);
+    const value = pos.shares * mark;
+    const avg = pos.cost / pos.shares;
+    return { pos, isBasket, asset, mark, value, avg };
+  }).filter(r => r.asset);
 
+  const totalIn = rows.reduce((a, r) => a + r.pos.cost, 0);
+  const totalNow = rows.reduce((a, r) => a + r.value, 0);
   const tiles = el("div", "tiles");
-  [["Invested", compact(totalIn)], ["Value today", compact(totalNow)],
-   ["Total P/L", pct((totalNow / totalIn - 1) * 100, 1)], ["Positions", String(items.length)]].forEach(([l, v], i) => {
+  [["Cost basis", compact(totalIn)], ["Value now", compact(totalNow)],
+   ["Unrealized P/L", pct(totalIn ? (totalNow / totalIn - 1) * 100 : 0, 1)],
+   ["Realized P/L", (realized >= 0 ? "+" : "−") + money(Math.abs(realized))]].forEach(([l, v], i) => {
     const t = el("div", "tile");
     t.appendChild(el("div", "t-label", l));
     const val = el("div", "t-value", v);
     if (i === 2) val.style.color = totalNow >= totalIn ? "var(--up)" : "var(--down)";
+    if (i === 3) val.style.color = realized >= 0 ? "var(--up)" : "var(--down)";
     t.appendChild(val);
     tiles.appendChild(t);
   });
   app.appendChild(tiles);
 
-  // combined value over time (sum of positions, yearly)
-  const years = [];
-  for (let y = Math.min(...rows.map(r => parseInt(r.it.season))); y <= 2026; y++) years.push(y);
-  const combined = years.map(y => {
-    let v = 0;
-    rows.forEach(r => {
-      const ei = r.p.seasons.findIndex(s => s.season === r.it.season);
-      const yi = r.p.seasons.findIndex(s => parseInt(s.season) === y);
-      if (parseInt(r.it.season) > y) return;             // not bought yet
-      if (yi >= 0) v += r.shares * r.p.seasons[yi].price;
-      else {
-        const lastKnown = r.p.seasons.filter(s => parseInt(s.season) <= y).pop() || r.p.seasons[ei];
-        v += r.shares * lastKnown.price;
-      }
-    });
-    return [y + 1, v];
-  }).filter(pt => pt[1] > 0);
-  if (combined.length > 1) {
-    const cp = el("section", "panel");
-    cp.appendChild(el("h2", null, "Combined value"));
-    cp.appendChild(el("p", "sub", "Season-end value of all positions, from first purchase to today"));
-    buildChart(cp, [{ name: "Portfolio", color: "#16a34a", pts: combined }], {
-      height: 240, zeroBase: true, ariaLabel: "Portfolio combined value over time",
-    });
-    app.appendChild(cp);
-  }
-
   const panel = el("section", "panel");
   const table = el("table", "pos-table");
   const thead = el("thead");
   const hr = el("tr");
-  ["Athlete", "Bought", "Invested", "Entry", "Now", "Value", "P/L", ""].forEach(h => hr.appendChild(el("th", null, h)));
+  ["Asset", "Shares", "Avg cost", "Last trade", "Value", "P/L", ""].forEach(h => hr.appendChild(el("th", null, h)));
   thead.appendChild(hr);
   table.appendChild(thead);
   const tb = el("tbody");
   rows.forEach(r => {
     const tr = el("tr");
     const nameTd = el("td");
-    const a = el("a", null, r.p.name);
-    a.href = "#/athlete/" + r.p.id;
-    a.style.color = "var(--ink)";
-    a.style.fontWeight = "600";
-    nameTd.appendChild(a);
+    if (r.isBasket) {
+      const w = el("div");
+      w.appendChild(el("b", null, r.asset.name));
+      w.appendChild(el("div", "sub", "index basket · " + basketMembers(r.asset).length + " athletes"));
+      nameTd.appendChild(w);
+    } else {
+      const a = el("a", null, r.asset.name);
+      a.href = "#/athlete/" + r.asset.id;
+      a.style.color = "var(--ink)";
+      a.style.fontWeight = "600";
+      nameTd.appendChild(a);
+    }
     tr.appendChild(nameTd);
-    tr.appendChild(el("td", null, r.it.season));
-    tr.appendChild(el("td", null, money(r.it.amt)));
-    tr.appendChild(el("td", null, money(r.entry)));
-    tr.appendChild(el("td", null, money(r.p.price)));
-    tr.appendChild(el("td", null, money(r.now)));
-    const pl = (r.now / r.it.amt - 1) * 100;
+    tr.appendChild(el("td", null, r.pos.shares.toFixed(1)));
+    tr.appendChild(el("td", null, money(r.avg)));
+    tr.appendChild(el("td", null, money(r.mark)));
+    tr.appendChild(el("td", null, money(r.value)));
+    const pl = (r.mark / r.avg - 1) * 100;
     const plTd = el("td");
     plTd.appendChild(el("span", "delta " + (pl >= 0 ? "pos" : "neg"), arrow(pl) + " " + pct(pl, 0)));
     tr.appendChild(plTd);
-    const xTd = el("td");
-    const x = el("button", "x-btn", "✕");
-    x.setAttribute("aria-label", "Remove position");
-    x.addEventListener("click", () => { store.remove(r.i); viewPortfolio(); });
-    xTd.appendChild(x);
-    tr.appendChild(xTd);
+    const actTd = el("td");
+    if (r.isBasket) {
+      const sell = el("button", "x-btn", "Sell 1");
+      sell.addEventListener("click", () => {
+        store.trade({ kind: "sell", type: "basket", id: r.asset.key, shares: Math.min(1, r.pos.shares), price: basketPrice(r.asset) });
+        toast("Sold 1 unit of " + r.asset.name + " at " + money(basketPrice(r.asset)));
+        viewPortfolio();
+      });
+      actTd.appendChild(sell);
+    } else {
+      const trade = el("a", "x-btn", "Trade");
+      trade.href = "#/athlete/" + r.asset.id;
+      actTd.appendChild(trade);
+    }
+    tr.appendChild(actTd);
     tb.appendChild(tr);
   });
   table.appendChild(tb);
@@ -878,7 +1060,9 @@ function viewList() {
     "Age runway — a small premium for prospects under 25, full value through the 25–30 prime, then a gentle decline that elite current production slows by up to 65% (sustained greatness is rewarded, reputation is not). The factor never drops below 0.75 — proven stars stay investable.",
     "Availability — games played remembered across three seasons with a fast-recovery clause, discounting the price once. A short injured season is a drawdown, never a delisting: talent is carried forward through small samples, because an ACL doesn't make you worse at basketball.",
     "Track record — first-, second- and third-year valuations are shrunk toward a league-average prior, so one hot rookie season can't out-price a proven MVP.",
-    "Price — only production above a replacement-level player has market value (the VORP idea), mapped to price on a convex curve. Stars separate sharply; role players stay cheap; early conviction gets paid — rookie Curry cost $78, peak Curry hit $341.",
+    "Fair value — only production above a replacement-level player has market value (the VORP idea), mapped to a suggested price on a convex curve. Stars separate sharply; early conviction gets paid — rookie Curry cost $78, peak Curry hit $341.",
+    "Market price — the engine only SUGGESTS fair value. Buyers and sellers trade at any price they choose, and the last trade is the market price. The model is the anchor, never a decree.",
+    "Why invest — two return paths: equity appreciation as the brand grows, and (roadmap) dividend-style payouts from the athlete's actual NIL and endorsement income.",
     "Roadmap — a brand-signal layer (NIL deal comps, social reach, search interest) multiplies on top for off-court equity: the H2 hypothesis from our OAP I deck.",
   ].forEach(t => ml.appendChild(el("li", null, t)));
   right.appendChild(ml);

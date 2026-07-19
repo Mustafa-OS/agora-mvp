@@ -270,3 +270,30 @@ table.seasons tr:hover td { background: var(--surface-2); }
   .ath-price { margin-left: 0; text-align: left; }
   .hide-sm { display: none; }
 }
+
+/* ---------- market layer: fair value vs traded price ---------- */
+.fv-chip {
+  display: inline-block; padding: 2px 8px; border-radius: 99px;
+  font-size: 11.5px; font-weight: 600; border: 1px solid var(--hairline);
+  color: var(--ink-2); white-space: nowrap;
+}
+.fv-chip.pos { color: var(--up); border-color: rgba(74,222,128,.35); }
+.fv-chip.neg { color: var(--down); border-color: rgba(248,113,113,.35); }
+.fv-line { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
+
+/* ---------- index baskets ---------- */
+.bk-head { margin-bottom: 10px; }
+.bk-head h2 { font-size: 20px; margin: 0 0 2px; }
+.baskets { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; margin-bottom: 26px; }
+.basket h3 { margin: 8px 0 4px; font-size: 16px; }
+.basket .bk-top { display: flex; justify-content: space-between; align-items: center; }
+.basket .bk-price { display: flex; align-items: baseline; gap: 10px; margin: 10px 0 2px; }
+.basket .bk-price b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.btn.small { padding: 7px 12px; font-size: 13px; }
+
+/* ---------- trade panel ---------- */
+.trade-total {
+  align-self: end; padding: 9px 14px; border: 1px solid var(--hairline);
+  border-radius: 8px; color: var(--ink-2); font-variant-numeric: tabular-nums;
+  font-size: 14px; white-space: nowrap;
+}
