@@ -297,3 +297,27 @@ table.seasons tr:hover td { background: var(--surface-2); }
   border-radius: 8px; color: var(--ink-2); font-variant-numeric: tabular-nums;
   font-size: 14px; white-space: nowrap;
 }
+
+/* ---------- athlete page: chart + order ticket side by side ---------- */
+.ath-grid {
+  display: grid; grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 14px; align-items: stretch; margin-bottom: 14px;
+}
+.ath-grid .panel { margin-bottom: 0; }
+.trade-ticket { display: flex; flex-direction: column; }
+.ticket-quote { display: flex; align-items: baseline; gap: 8px; margin: 2px 0 12px; flex-wrap: wrap; }
+.ticket-quote b { font-size: 26px; font-variant-numeric: tabular-nums; }
+.trade-form { display: flex; flex-direction: column; gap: 12px; margin-top: auto; }
+.trade-form .trade-total { align-self: stretch; text-align: center; }
+.trade-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 2px; }
+.btn.big {
+  padding: 15px 0; font-size: 16px; font-weight: 700;
+  border-radius: 10px; text-align: center; letter-spacing: .02em;
+}
+.btn.big.buy { background: #22c55e; color: #0b0d10; }
+.btn.big.buy:hover { filter: brightness(1.12); }
+.btn.big.sell { background: #dc2626; color: #fff; }
+.btn.big.sell:hover { filter: brightness(1.12); }
+@media (max-width: 920px) {
+  .ath-grid { grid-template-columns: 1fr; }
+}

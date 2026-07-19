@@ -610,7 +610,69 @@ function viewAthlete(id) {
       };
     },
   });
-  app.appendChild(chartPanel);
+  // trade ticket — sits to the right of the chart, like an order ticket
+  const tp = el("section", "panel trade-ticket");
+  tp.appendChild(el("h2", null, "Trade"));
+  tp.appendChild(el("p", "sub", "Set your own price — the market, not the model, decides. Your trade becomes the new last-traded price."));
+  const quote = el("div", "ticket-quote");
+  quote.appendChild(el("b", null, money(lastTrade(p))));
+  quote.appendChild(el("span", "sub", "last trade · fair value " + money(fairValue(p))));
+  tp.appendChild(quote);
+  const tForm = el("div", "trade-form");
+  const mkF = (labelText, control) => {
+    const f = el("div", "field");
+    f.appendChild(el("label", null, labelText));
+    f.appendChild(control);
+    return f;
+  };
+  const priceIn = el("input", "amount");
+  priceIn.type = "number"; priceIn.min = 1; priceIn.step = 0.5;
+  priceIn.value = lastTrade(p).toFixed(2);
+  const qtyIn = el("input", "amount");
+  qtyIn.type = "number"; qtyIn.min = 0.5; qtyIn.step = 0.5; qtyIn.value = 5;
+  const totalOut = el("div", "trade-total");
+  const holding = el("p", "sub");
+  const updateMeta = () => {
+    const q = Math.max(0, Number(qtyIn.value) || 0), pr = Math.max(0, Number(priceIn.value) || 0);
+    totalOut.textContent = "Total " + money(q * pr);
+    const own = store.owned("ath", p.id);
+    holding.textContent = own.shares > 0
+      ? "You own " + own.shares.toFixed(1) + " shares · avg cost " + money(own.cost / own.shares)
+      : "You own no shares yet.";
+  };
+  const buyBtn = el("button", "btn big buy", "Buy");
+  const sellBtn = el("button", "btn big sell", "Sell");
+  const doTrade = kind => {
+    const q = Number(qtyIn.value) || 0, pr = Number(priceIn.value) || 0;
+    if (q <= 0 || pr <= 0) { toast("Enter a price and quantity"); return; }
+    if (kind === "sell" && store.owned("ath", p.id).shares < q - 1e-9) {
+      toast("You only own " + store.owned("ath", p.id).shares.toFixed(1) + " shares"); return;
+    }
+    store.trade({ kind, type: "ath", id: p.id, shares: q, price: pr });
+    marketStore.setLastTrade(p.id, pr);
+    buildTicker();
+    toast((kind === "buy" ? "Bought " : "Sold ") + q + " shares of " + p.name + " at " + money(pr));
+    viewAthlete(p.id);
+  };
+  buyBtn.addEventListener("click", () => doTrade("buy"));
+  sellBtn.addEventListener("click", () => doTrade("sell"));
+  priceIn.addEventListener("input", updateMeta);
+  qtyIn.addEventListener("input", updateMeta);
+  tForm.appendChild(mkF("Your price ($)", priceIn));
+  tForm.appendChild(mkF("Shares", qtyIn));
+  tForm.appendChild(totalOut);
+  const actions = el("div", "trade-actions");
+  actions.appendChild(buyBtn);
+  actions.appendChild(sellBtn);
+  tForm.appendChild(actions);
+  tp.appendChild(tForm);
+  tp.appendChild(holding);
+  updateMeta();
+
+  const athGrid = el("div", "ath-grid");
+  athGrid.appendChild(chartPanel);
+  athGrid.appendChild(tp);
+  app.appendChild(athGrid);
 
   // valuation breakdown
   const last = p.seasons[p.seasons.length - 1];
@@ -644,60 +706,6 @@ function viewAthlete(id) {
   btnRow.appendChild(tmBtn);
   bd.appendChild(btnRow);
   app.appendChild(bd);
-
-  // trade panel — buy/sell at ANY price, like a real market
-  const tp = el("section", "panel");
-  tp.appendChild(el("h2", null, "Trade"));
-  tp.appendChild(el("p", "sub", "Set your own price — the market, not the model, decides what " + p.name.split(" ").pop() + " is worth. Your trade becomes the new last-traded price."));
-  const tc = el("div", "tm-controls");
-  const mkF = (labelText, control) => {
-    const f = el("div", "field");
-    f.appendChild(el("label", null, labelText));
-    f.appendChild(control);
-    return f;
-  };
-  const priceIn = el("input", "amount");
-  priceIn.type = "number"; priceIn.min = 1; priceIn.step = 0.5;
-  priceIn.value = lastTrade(p).toFixed(2);
-  const qtyIn = el("input", "amount");
-  qtyIn.type = "number"; qtyIn.min = 0.5; qtyIn.step = 0.5; qtyIn.value = 5;
-  const totalOut = el("div", "trade-total");
-  const holding = el("p", "sub");
-  const updateMeta = () => {
-    const q = Math.max(0, Number(qtyIn.value) || 0), pr = Math.max(0, Number(priceIn.value) || 0);
-    totalOut.textContent = "Total " + money(q * pr);
-    const own = store.owned("ath", p.id);
-    holding.textContent = own.shares > 0
-      ? "You own " + own.shares.toFixed(1) + " shares · avg cost " + money(own.cost / own.shares)
-      : "You own no shares yet.";
-  };
-  const buyBtn = el("button", "btn", "Buy");
-  const sellBtn = el("button", "btn ghost", "Sell");
-  const doTrade = kind => {
-    const q = Number(qtyIn.value) || 0, pr = Number(priceIn.value) || 0;
-    if (q <= 0 || pr <= 0) { toast("Enter a price and quantity"); return; }
-    if (kind === "sell" && store.owned("ath", p.id).shares < q - 1e-9) {
-      toast("You only own " + store.owned("ath", p.id).shares.toFixed(1) + " shares"); return;
-    }
-    store.trade({ kind, type: "ath", id: p.id, shares: q, price: pr });
-    marketStore.setLastTrade(p.id, pr);
-    buildTicker();
-    toast((kind === "buy" ? "Bought " : "Sold ") + q + " shares of " + p.name + " at " + money(pr));
-    viewAthlete(p.id);
-  };
-  buyBtn.addEventListener("click", () => doTrade("buy"));
-  sellBtn.addEventListener("click", () => doTrade("sell"));
-  priceIn.addEventListener("input", updateMeta);
-  qtyIn.addEventListener("input", updateMeta);
-  tc.appendChild(mkF("Your price ($)", priceIn));
-  tc.appendChild(mkF("Shares", qtyIn));
-  tc.appendChild(totalOut);
-  tc.appendChild(buyBtn);
-  tc.appendChild(sellBtn);
-  tp.appendChild(tc);
-  tp.appendChild(holding);
-  updateMeta();
-  app.appendChild(tp);
 
   // seasons table
   const st = el("section", "panel");
