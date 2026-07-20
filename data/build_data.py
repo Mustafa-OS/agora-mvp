@@ -26,25 +26,69 @@ from nba_api.stats.endpoints import playercareerstats
 OUT = Path(__file__).resolve().parent.parent / "docs" / "data"
 
 # ---------------------------------------------------------------- roster
-# (id, name, position, archetype tag, one-line story for the UI)
+# (id, name, position, archetype tag, college school (None = int'l/HS),
+#  draft year, one-line story for the UI)
 ROSTER = [
-    (2544,    "LeBron James",        "SF", "Blue chip",  "21+ seasons of compounding value — the definition of a blue-chip athlete asset."),
-    (201939,  "Stephen Curry",       "PG", "Blue chip",  "Changed the geometry of the sport; a decade of elite production after his first MVP."),
-    (201142,  "Kevin Durant",        "SF", "Blue chip",  "Elite scorer whose value survived an Achilles tear — resilience priced in."),
-    (203507,  "Giannis Antetokounmpo","PF","Blue chip",  "From anonymous 15th pick to MVP — the single greatest growth story on the board."),
-    (203999,  "Nikola Jokic",        "C",  "Blue chip",  "Drafted 41st during a taco ad. Three MVPs later he's the market's most mispriced IPO ever."),
-    (203954,  "Joel Embiid",         "C",  "Volatile",   "MVP-level peaks, injury-driven drawdowns — the market's highest-beta large cap."),
-    (202695,  "Kawhi Leonard",       "SF", "Volatile",   "Two Finals MVPs; chronic availability risk. Elite mean, brutal variance."),
-    (1629029, "Luka Doncic",         "PG", "Growth",     "Teenage phenom to perennial MVP candidate — early investors caught the full curve."),
-    (1628983, "Shai Gilgeous-Alexander","PG","Growth",   "Traded as a rookie, re-rated every season since — now the market's top performer."),
-    (1628369, "Jayson Tatum",        "SF", "Growth",     "Steady multi-year climb from role player to franchise cornerstone."),
-    (1630162, "Anthony Edwards",     "SG", "Growth",     "Face-of-the-league trajectory; the market is pricing the next five years, not the last."),
-    (1641705, "Victor Wembanyama",   "C",  "IPO",        "The most anticipated listing in history. Generational upside, thin track record."),
-    (1630169, "Tyrese Haliburton",   "PG", "Growth",     "Acquired mid-season in a lopsided trade — the market repriced him within a year."),
-    (201565,  "Derrick Rose",        "PG", "Cautionary", "Youngest MVP ever at 22. One ACL later, the steepest de-rating on record."),
-    (1629627, "Zion Williamson",     "PF", "Volatile",   "Once-a-generation hype at IPO; availability has capped every rally since."),
-    (1627732, "Ben Simmons",         "PG", "Cautionary", "All-NBA at 24, out of the rotation by 27 — why diversification exists."),
-    (202322,  "John Wall",           "PG", "Cautionary", "Five straight All-Star seasons, then a max contract met an Achilles tear."),
+    (2544,    "LeBron James",        "SF", "Blue chip",  None,             2003, "21+ seasons of compounding value — the definition of a blue-chip athlete asset."),
+    (201939,  "Stephen Curry",       "PG", "Blue chip",  "Davidson",       2009, "Changed the geometry of the sport; a decade of elite production after his first MVP."),
+    (201142,  "Kevin Durant",        "SF", "Blue chip",  "Texas",          2007, "Elite scorer whose value survived an Achilles tear — resilience priced in."),
+    (203507,  "Giannis Antetokounmpo","PF","Blue chip",  None,             2013, "From anonymous 15th pick to MVP — the single greatest growth story on the board."),
+    (203999,  "Nikola Jokic",        "C",  "Blue chip",  None,             2014, "Drafted 41st during a taco ad. Three MVPs later he's the market's most mispriced IPO ever."),
+    (203954,  "Joel Embiid",         "C",  "Volatile",   "Kansas",         2014, "MVP-level peaks, injury-driven drawdowns — the market's highest-beta large cap."),
+    (202695,  "Kawhi Leonard",       "SF", "Volatile",   "San Diego State",2011, "Two Finals MVPs; chronic availability risk. Elite mean, brutal variance."),
+    (1629029, "Luka Doncic",         "PG", "Growth",     None,             2018, "Teenage phenom to perennial MVP candidate — early investors caught the full curve."),
+    (1628983, "Shai Gilgeous-Alexander","PG","Growth",   "Kentucky",       2018, "Traded as a rookie, re-rated every season since — now the market's top performer."),
+    (1628369, "Jayson Tatum",        "SF", "Growth",     "Duke",           2017, "Steady multi-year climb from role player to franchise cornerstone."),
+    (1630162, "Anthony Edwards",     "SG", "Growth",     "Georgia",        2020, "Face-of-the-league trajectory; the market is pricing the next five years, not the last."),
+    (1641705, "Victor Wembanyama",   "C",  "IPO",        None,             2023, "The most anticipated listing in history. Generational upside, thin track record."),
+    (1630169, "Tyrese Haliburton",   "PG", "Growth",     "Iowa State",     2020, "Acquired mid-season in a lopsided trade — the market repriced him within a year."),
+    (201565,  "Derrick Rose",        "PG", "Cautionary", "Memphis",        2008, "Youngest MVP ever at 22. One ACL later, the steepest de-rating on record."),
+    (1629627, "Zion Williamson",     "PF", "Volatile",   "Duke",           2019, "Once-a-generation hype at IPO; availability has capped every rally since."),
+    (1627732, "Ben Simmons",         "PG", "Cautionary", "LSU",            2016, "All-NBA at 24, out of the rotation by 27 — why diversification exists."),
+    (202322,  "John Wall",           "PG", "Cautionary", "Kentucky",       2010, "Five straight All-Star seasons, then a max contract met an Achilles tear."),
+    # ---- expansion: more of the board
+    (1626164, "Devin Booker",        "SG", "Blue chip",  "Kentucky",       2015, "70-point games and a decade of elite scoring — a franchise in one player."),
+    (1628378, "Donovan Mitchell",    "SG", "Blue chip",  "Louisville",     2017, "Late-lottery steal turned perennial All-NBA guard."),
+    (1628973, "Jalen Brunson",       "PG", "Blue chip",  "Villanova",      2018, "Second-round pick to franchise point guard — the market's favorite re-rating."),
+    (1630178, "Tyrese Maxey",        "PG", "Growth",     "Kentucky",       2020, "Every season faster than the last — a compounding speed asset."),
+    (1630217, "Desmond Bane",        "SG", "Growth",     "TCU",            2020, "30th pick, top-30 player stretches — proof the draft misprices shooters."),
+    (1630596, "Evan Mobley",         "PF", "Growth",     "USC",            2021, "Defensive anchor with an expanding offensive floor — quiet compounding."),
+    (1631094, "Paolo Banchero",      "PF", "Growth",     "Duke",           2022, "No. 1 pick building a scoring franchise in Orlando."),
+    (1630578, "Alperen Sengun",      "C",  "Growth",     None,             2021, "Jokic-lite passing big — international pipeline value."),
+    (1630595, "Cade Cunningham",     "PG", "Growth",     "Oklahoma State", 2021, "Franchise guard who dragged a rebuild back to relevance."),
+    (1630532, "Franz Wagner",        "SF", "Growth",     "Michigan",       2021, "Two-way wing scaling into a No. 1 option."),
+    (1630567, "Scottie Barnes",      "PF", "Growth",     "Florida State",  2021, "Point-forward toolbox — the market is still deciding his ceiling."),
+    (1629027, "Trae Young",          "PG", "Volatile",   "Oklahoma",       2018, "Elite offense, contested defense — the board's most argued-about asset."),
+    (1626157, "Karl-Anthony Towns",  "C",  "Blue chip",  "Kentucky",       2015, "The best-shooting big of his generation."),
+    (1628389, "Bam Adebayo",         "C",  "Blue chip",  "Kentucky",       2017, "Switch-everything anchor of a perennial contender."),
+    (1631096, "Chet Holmgren",       "C",  "Growth",     "Gonzaga",        2022, "Unicorn rim protection and floor spacing on a title core."),
+]
+
+# ---------------------------------------------------------------- college roster
+# Top NCAA players, 2025-26 season (approximate per-game lines, labeled as such).
+# (name, school, school abbrev, pos, class year, age, gp, min, pts, reb, ast,
+#  stl, blk, tov, ts, 3pm, story)
+COLLEGE = [
+    ("AJ Dybantsa",      "BYU",        "BYU",  "SF", "Freshman",  19, 31, 33.0, 21.8, 7.0, 3.8, 1.3, 0.9, 2.7, .590, 1.8,
+     "Projected No. 1 pick in 2026 — the most valuable IPO on the college board."),
+    ("Cameron Boozer",   "Duke",       "DUKE", "PF", "Freshman",  18, 33, 32.0, 20.5, 9.8, 3.6, 1.2, 1.1, 2.3, .620, 1.1,
+     "Duke legacy, double-double machine — championship pedigree priced early."),
+    ("Cayden Boozer",    "Duke",       "DUKE", "PG", "Freshman",  18, 33, 29.0, 12.8, 3.4, 6.7, 1.1, 0.1, 2.1, .585, 1.4,
+     "The other Boozer twin — elite floor general in the Duke machine."),
+    ("Darryn Peterson",  "Kansas",     "KU",   "SG", "Freshman",  19, 30, 33.5, 22.4, 4.6, 4.9, 1.5, 0.5, 2.9, .600, 2.6,
+     "Shot-making guard fighting Dybantsa for the No. 1 conversation."),
+    ("Nate Ament",       "Tennessee",  "TENN", "SF", "Freshman",  18, 32, 31.0, 17.9, 6.8, 2.4, 1.0, 1.2, 2.4, .565, 2.0,
+     "Wiry two-way wing with a Durant-shaped growth curve."),
+    ("Koa Peat",         "Arizona",    "ZONA", "PF", "Freshman",  19, 34, 29.5, 15.6, 7.9, 2.9, 1.1, 0.8, 2.5, .580, 0.4,
+     "Physical forward who wins every 50-50 ball — floor-raiser archetype."),
+    ("Braden Smith",     "Purdue",     "PURD", "PG", "Senior",    22, 34, 34.0, 16.2, 4.8, 9.1, 2.1, 0.2, 2.8, .590, 2.4,
+     "The nation's best pure point guard — near-term, established value."),
+    ("JT Toppin",        "Texas Tech", "TTU",  "PF", "Junior",    22, 33, 31.5, 20.3, 9.4, 2.1, 0.9, 1.2, 2.2, .620, 0.6,
+     "Production machine — the college board's most bankable stat line."),
+    ("Jayden Quaintance","Kentucky",   "UK",   "C",  "Sophomore", 18, 30, 28.0, 14.1, 8.6, 2.3, 1.2, 2.9, 2.0, .600, 0.2,
+     "Youngest elite rim protector in the country — Kentucky's next big export."),
+    ("Mikel Brown Jr",   "Louisville", "LOU",  "PG", "Freshman",  19, 33, 32.0, 18.7, 3.9, 5.9, 1.3, 0.2, 2.8, .570, 2.7,
+     "Shifty lead guard — the highest-usage freshman offense in the ACC."),
 ]
 
 # ---------------------------------------------------------------- model v2
@@ -118,6 +162,42 @@ V_REPLACEMENT = 20.0
 AVAIL_PRICE_EXP = 0.40
 PRICE_K, PRICE_EXP, PRICE_FLOOR = 0.28, 1.70, 8.0
 SEASON_GAMES = {"2011-12": 66, "2019-20": 72, "2020-21": 72}
+
+# ---- college (NCAA) scoring: own baselines, pre-pro discount ----
+# An NCAA stat line is scored against college rotation-player baselines, then
+# production is discounted: college output is unproven against pro defense, so
+# only a fraction of it counts as investable value today. That is exactly how
+# the market prices prospects — real value, deep uncertainty haircut.
+NCAA_BASE = {
+    "PTS": (9.5, 5.0), "TRB": (4.0, 2.2), "AST": (2.0, 1.6),
+    "STL": (0.8, 0.4), "BLK": (0.5, 0.5), "TOV": (1.6, 0.7),
+    "TS_PCT": (0.545, 0.05), "MIN": (22.0, 6.0), "TPM": (0.9, 0.8),
+}
+NCAA_GAMES = 34
+NCAA_DISCOUNT = 0.45      # pre-pro haircut on production
+NCAA_PRIOR = 25.0         # thin-track-record prior (below NBA starter prior)
+NCAA_SHRINK = 0.40
+
+
+def score_college(row):
+    """One college season -> (score, age_f, avail, value, price)."""
+    wz = 0.0
+    vol = max(0.6, min(1.4, row["PTS"] / 18.0))
+    for stat, w in STAT_WEIGHTS.items():
+        mu, sd = NCAA_BASE[stat]
+        z = (row[stat] - mu) / sd
+        eff_w = w * vol if stat == "TS_PCT" else w
+        wz += max(-TERM_CAP, min(TERM_CAP, eff_w * z))
+    score = max(5.0, min(99.0, SCORE_C + SCORE_M * wz))
+    age_f = age_factor(row["AGE"], wz)
+    share = min(1.0, row["GP"] / NCAA_GAMES)
+    avail = share ** 0.5
+    prod = score * age_f * NCAA_DISCOUNT
+    prod = (1 - NCAA_SHRINK) * prod + NCAA_SHRINK * NCAA_PRIOR
+    value = prod * avail
+    surplus = max(0.0, prod - V_REPLACEMENT)
+    price = max(PRICE_FLOOR, PRICE_K * surplus ** PRICE_EXP * share ** AVAIL_PRICE_EXP)
+    return round(score, 1), round(age_f, 3), round(avail, 3), round(value, 1), round(price, 2)
 
 
 def weighted_z(row, pos):
@@ -265,7 +345,7 @@ def fetch_career(pid):
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     players = []
-    for pid, name, pos, tag, story in ROSTER:
+    for pid, name, pos, tag, school, draft, story in ROSTER:
         try:
             career = fetch_career(pid)
         except Exception as e:
@@ -324,6 +404,7 @@ def main():
         last, prev = seasons[-1], seasons[-2] if len(seasons) > 1 else seasons[-1]
         players.append({
             "id": pid, "name": name, "pos": pos, "tag": tag, "story": story,
+            "school": school, "draft": draft, "league": "NBA",
             "team": last["team"], "price": last["price"],
             "change": round((last["price"] - prev["price"]) / prev["price"] * 100, 1),
             "peak": max(s["price"] for s in seasons),
@@ -334,6 +415,37 @@ def main():
               f"{(last['price'] / seasons[0]['price'] - 1) * 100:.0f}% since IPO)")
         time.sleep(0.8)
 
+    # ---- college prospects: one curated season each, own id space (90001+)
+    for i, (name, school, abbrev, pos, cls, age, gp, minutes, pts, reb, ast,
+            stl, blk, tov, ts, tpm, story) in enumerate(COLLEGE):
+        row = {"AGE": age, "GP": gp, "MIN": minutes, "PTS": pts, "TRB": reb,
+               "AST": ast, "STL": stl, "BLK": blk, "TOV": tov,
+               "TS_PCT": ts, "TPM": tpm}
+        s_score, age_f, avail, value, price = score_college(row)
+        pid = 90001 + i
+        season = {
+            "season": "2025-26", "team": abbrev, "age": age, "gp": gp,
+            "min": minutes, "pts": pts, "reb": reb, "ast": ast, "stl": stl,
+            "blk": blk, "tov": tov, "ts": ts, "score": s_score, "ageF": age_f,
+            "avail": avail, "value": value, "price": price, "carried": False,
+        }
+        series = []
+        p0 = price * 0.82
+        for step in range(8):
+            f = (step + 1) / 8.0
+            eased = p0 + (price - p0) * (f * f * (3 - 2 * f))
+            p = eased * (1.0 + wiggle(pid, 0, step))
+            series.append([round(2025.79 + f * 0.58, 3), round(max(6.0, p), 2)])
+        series[-1][1] = price
+        players.append({
+            "id": pid, "name": name, "pos": pos, "tag": "College",
+            "story": story, "school": school, "draft": 2026, "league": "NCAA",
+            "classYear": cls, "approx": True,
+            "team": abbrev, "price": price, "change": round((price / p0 - 1) * 100, 1),
+            "peak": price, "from": "2025-26", "seasons": [season], "series": series,
+        })
+        print(f"  ok {name} ({school}): ${price:.0f} college IPO")
+
     # S&P 500 approximate season-aligned index (Oct->Oct total-return-ish, %)
     spx_returns = {
         2003: 26, 2004: 9, 2005: 5, 2006: 14, 2007: 4, 2008: -37, 2009: 26,
@@ -341,7 +453,7 @@ def main():
         2017: 19, 2018: -5, 2019: 29, 2020: 16, 2021: 27, 2022: -19,
         2023: 24, 2024: 23, 2025: 12,
     }
-    data = {"generated": "2026-07-15", "model": "v2", "players": players,
+    data = {"generated": "2026-07-20", "model": "v2.1-college", "players": players,
             "spx": spx_returns}
     js = "window.AGORA_DATA = " + json.dumps(data, separators=(",", ":")) + ";\n"
     (OUT / "players.js").write_text(js)

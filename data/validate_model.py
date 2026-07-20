@@ -118,6 +118,17 @@ def main():
           {"Shai Gilgeous-Alexander", "Nikola Jokic"} <= {p["name"] for p in top},
           ", ".join(f"{p['name']} ${p['price']}" for p in top))
 
+    # --- College prospects
+    college = [p for p in data["players"] if p.get("league") == "NCAA"]
+    check("College board has 8+ prospects", len(college) >= 8, f"{len(college)} listed")
+    check("College prospects price as cheap IPOs (all < $60)",
+          all(p["price"] < 60 for p in college),
+          ", ".join(f"{p['name']} ${p['price']}" for p in sorted(college, key=lambda p: -p['price'])[:3]))
+    check("No college prospect out-prices the NBA top-5",
+          all(p["league"] == "NBA" for p in top), "top-5 all NBA")
+    check("Every player carries school/draft/league fields",
+          all("league" in p and "draft" in p and "school" in p for p in data["players"]), "ok")
+
     print(f"{'':2}{'CHECK':70} RESULT")
     for name, ok, detail in checks:
         print(f"  {name:70} {'PASS' if ok else 'FAIL':4}  {detail}")

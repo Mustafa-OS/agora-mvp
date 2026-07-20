@@ -74,17 +74,33 @@ const premChip = p => {
 };
 
 /* ---------- index baskets (ETF-style) ----------
-   Mirrors the OAP deck taxonomy: in the college product baskets cut by
-   conference/school and class year ("All ACC", "All Duke", freshman class);
-   on this NBA demo the same cuts are theme, position, and age runway. */
+   The deck taxonomy, live: invest by school (Duke, Kentucky…), by draft
+   class (2018, 2020, 2021, the projected 2026 college class), by position,
+   by theme, or by runway. College prospects are real listings. */
 const lastAge = p => p.seasons[p.seasons.length - 1].age;
 const BASKETS = [
-  { key: "AGX17", group: "Flagship", name: "Agora 17 Index",
-    desc: "Every listed athlete, equal weight — own the whole board in one click.", filter: () => true },
+  { key: "AGX17", group: "Flagship", name: "Agora Index",
+    desc: "Every listed athlete — NBA stars and college prospects, equal weight.", filter: () => true },
   { key: "BLUE", group: "Flagship", name: "Blue Chip Basket",
     desc: "Proven superstars only. Lower beta, championship pedigree.", filter: p => p.tag === "Blue chip" },
   { key: "GRWTH", group: "Flagship", name: "Growth Basket",
     desc: "Rising stars and recent IPOs — the upside sleeve.", filter: p => p.tag === "Growth" || p.tag === "IPO" },
+  { key: "DUKE", group: "By school", name: "Duke Basket",
+    desc: "All Duke — NBA alumni plus current Blue Devils. Program equity, literally.", filter: p => p.school === "Duke" },
+  { key: "UK", group: "By school", name: "Kentucky Basket",
+    desc: "Big Blue Nation's export machine — the deepest school pipeline on the board.", filter: p => p.school === "Kentucky" },
+  { key: "KU", group: "By school", name: "Kansas Basket",
+    desc: "Rock Chalk — an MVP alum and the next lottery guard.", filter: p => p.school === "Kansas" },
+  { key: "S2P", group: "By school", name: "Straight-to-Pro Basket",
+    desc: "Never played college — preps-to-pros and the international pipeline.", filter: p => !p.school && p.league === "NBA" },
+  { key: "D18", group: "By draft class", name: "Class of 2018",
+    desc: "Luka, SGA, Trae, Brunson — a legendary draft, one unit.", filter: p => p.draft === 2018 },
+  { key: "D20", group: "By draft class", name: "Class of 2020",
+    desc: "The pandemic draft that out-performed — Ant, Haliburton, Maxey, Bane.", filter: p => p.draft === 2020 },
+  { key: "D21", group: "By draft class", name: "Class of 2021",
+    desc: "Five franchise pieces, still compounding.", filter: p => p.draft === 2021 },
+  { key: "D26", group: "By draft class", name: "Class of 2026 (projected)",
+    desc: "The entire college board — own the whole draft class before the draft.", filter: p => p.league === "NCAA" },
   { key: "GUARD", group: "By position", name: "Guards Index",
     desc: "Every point and shooting guard — playmaking and shot creation.", filter: p => p.pos === "PG" || p.pos === "SG" },
   { key: "WING", group: "By position", name: "Wings Index",
@@ -460,7 +476,7 @@ function viewMarket() {
   // controls
   const controls = el("div", "controls");
   const chips = el("div", "chips");
-  const tags = ["All", "Blue chip", "Growth", "Volatile", "Cautionary", "IPO"];
+  const tags = ["All", "Blue chip", "Growth", "Volatile", "Cautionary", "IPO", "College"];
   let activeTag = state.marketTag || "All";
   tags.forEach(tag => {
     const c = el("button", "chip" + (tag === activeTag ? " on" : ""), tag);
@@ -736,8 +752,8 @@ function viewBaskets() {
   head.appendChild(el("h1", null, "Baskets"));
   head.appendChild(el("p", null,
     "Index funds for athletes: ETF-style units you buy and sell like any share, priced as the equal-weight average of their members' last trades. " +
-    "In the college product these cut by conference, school and class year — “All ACC”, “All Duke”, the freshman class. " +
-    "On this NBA demo, the same three cuts: theme, position, and runway."));
+    "Exactly like the deck says — invest by school (Duke, Kentucky), by draft class (2018, 2020, the projected 2026 college class), " +
+    "by position, or by theme. College prospects are live listings on this board."));
   app.appendChild(head);
 
   const groups = [...new Set(BASKETS.map(b => b.group))];
