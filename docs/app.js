@@ -73,11 +73,30 @@ const premChip = p => {
   return s;
 };
 
-/* ---------- index baskets (ETF-style) ---------- */
+/* ---------- index baskets (ETF-style) ----------
+   Mirrors the OAP deck taxonomy: in the college product baskets cut by
+   conference/school and class year ("All ACC", "All Duke", freshman class);
+   on this NBA demo the same cuts are theme, position, and age runway. */
+const lastAge = p => p.seasons[p.seasons.length - 1].age;
 const BASKETS = [
-  { key: "AGX17", name: "Agora 17 Index", desc: "Every listed athlete, equal weight — own the whole board in one click.", filter: () => true },
-  { key: "BLUE", name: "Blue Chip Basket", desc: "Proven superstars only. Lower beta, championship pedigree.", filter: p => p.tag === "Blue chip" },
-  { key: "GRWTH", name: "Growth Basket", desc: "Rising stars and recent IPOs — the upside sleeve.", filter: p => p.tag === "Growth" || p.tag === "IPO" },
+  { key: "AGX17", group: "Flagship", name: "Agora 17 Index",
+    desc: "Every listed athlete, equal weight — own the whole board in one click.", filter: () => true },
+  { key: "BLUE", group: "Flagship", name: "Blue Chip Basket",
+    desc: "Proven superstars only. Lower beta, championship pedigree.", filter: p => p.tag === "Blue chip" },
+  { key: "GRWTH", group: "Flagship", name: "Growth Basket",
+    desc: "Rising stars and recent IPOs — the upside sleeve.", filter: p => p.tag === "Growth" || p.tag === "IPO" },
+  { key: "GUARD", group: "By position", name: "Guards Index",
+    desc: "Every point and shooting guard — playmaking and shot creation.", filter: p => p.pos === "PG" || p.pos === "SG" },
+  { key: "WING", group: "By position", name: "Wings Index",
+    desc: "The forwards — two-way versatility, the league's premium archetype.", filter: p => p.pos === "SF" },
+  { key: "BIGS", group: "By position", name: "Bigs Index",
+    desc: "Power forwards and centers — rim protection, rebounding, interior scoring.", filter: p => p.pos === "PF" || p.pos === "C" },
+  { key: "YOUNG", group: "By runway", name: "Young Core (≤26)",
+    desc: "Longer runway, higher risk/reward — the freshman-class analogue.", filter: p => lastAge(p) <= 26 },
+  { key: "PRIME", group: "By runway", name: "Prime Years (27–30)",
+    desc: "The peak production window — established, near-term value.", filter: p => lastAge(p) >= 27 && lastAge(p) <= 30 },
+  { key: "VET", group: "By runway", name: "Veterans (31+)",
+    desc: "Proven greats late in the curve — the senior-class analogue.", filter: p => lastAge(p) >= 31 },
 ];
 const basketMembers = b => P.filter(b.filter);
 const basketPrice = b => {
@@ -426,40 +445,17 @@ function viewMarket() {
   hero.appendChild(tiles);
   app.appendChild(hero);
 
-  // index baskets (ETF-style)
-  const bkSection = el("section");
-  const bkHead = el("div", "view-head bk-head");
-  bkHead.appendChild(el("h2", null, "Index baskets"));
-  bkHead.appendChild(el("p", "sub", "Don't want to pick one athlete? Own a slice of many — diversifies single-athlete injury risk."));
-  bkSection.appendChild(bkHead);
-  const bkRow = el("div", "baskets");
-  BASKETS.forEach(b => {
-    const card = el("div", "basket panel");
-    const top = el("div", "bk-top");
-    top.appendChild(el("span", "tag", b.key));
-    top.appendChild(el("span", "sub", basketMembers(b).length + " athletes"));
-    card.appendChild(top);
-    card.appendChild(el("h3", null, b.name));
-    card.appendChild(el("p", "sub", b.desc));
-    const priceRow = el("div", "bk-price");
-    priceRow.appendChild(el("b", null, money(basketPrice(b))));
-    const ch = basketChange(b);
-    priceRow.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
-    card.appendChild(priceRow);
-    card.appendChild(el("div", "sub", "Fair value " + money(basketFair(b)) + " per unit"));
-    const btn = el("button", "btn small", "Buy 1 unit · " + money(basketPrice(b)));
-    btn.addEventListener("click", e => {
-      e.stopPropagation();
-      store.trade({ kind: "buy", type: "basket", id: b.key, shares: 1, price: basketPrice(b) });
-      toast("Bought 1 unit of " + b.name + " at " + money(basketPrice(b)));
-    });
-    const br = el("div", "btn-row");
-    br.appendChild(btn);
-    card.appendChild(br);
-    bkRow.appendChild(card);
-  });
-  bkSection.appendChild(bkRow);
-  app.appendChild(bkSection);
+  // baskets promo -> dedicated tab
+  const promo = el("section", "panel bk-promo");
+  const pLeft = el("div");
+  pLeft.appendChild(el("h2", null, "Index baskets"));
+  pLeft.appendChild(el("p", "sub",
+    "Own many athletes in one click — by theme, position, or runway. Diversifies single-athlete injury risk."));
+  promo.appendChild(pLeft);
+  const pBtn = el("button", "btn", "Explore baskets →");
+  pBtn.addEventListener("click", () => { location.hash = "#/baskets"; });
+  promo.appendChild(pBtn);
+  app.appendChild(promo);
 
   // controls
   const controls = el("div", "controls");
@@ -730,6 +726,76 @@ function viewAthlete(id) {
   wrap.appendChild(table);
   st.appendChild(wrap);
   app.appendChild(st);
+}
+
+/* ---------- baskets ---------- */
+function viewBaskets() {
+  document.title = "Agora — Baskets";
+  app.replaceChildren();
+  const head = el("div", "view-head");
+  head.appendChild(el("h1", null, "Baskets"));
+  head.appendChild(el("p", null,
+    "Index funds for athletes: ETF-style units you buy and sell like any share, priced as the equal-weight average of their members' last trades. " +
+    "In the college product these cut by conference, school and class year — “All ACC”, “All Duke”, the freshman class. " +
+    "On this NBA demo, the same three cuts: theme, position, and runway."));
+  app.appendChild(head);
+
+  const groups = [...new Set(BASKETS.map(b => b.group))];
+  groups.forEach(g => {
+    const section = el("section");
+    const gh = el("div", "view-head bk-head");
+    gh.appendChild(el("h2", null, g));
+    section.appendChild(gh);
+    const row = el("div", "baskets");
+    BASKETS.filter(b => b.group === g && basketMembers(b).length >= 2).forEach(b => {
+      const members = basketMembers(b);
+      const card = el("div", "basket panel");
+      const top = el("div", "bk-top");
+      top.appendChild(el("span", "tag", b.key));
+      top.appendChild(el("span", "sub", members.length + " athletes"));
+      card.appendChild(top);
+      card.appendChild(el("h3", null, b.name));
+      card.appendChild(el("p", "sub", b.desc));
+      const priceRow = el("div", "bk-price");
+      priceRow.appendChild(el("b", null, money(basketPrice(b))));
+      const ch = basketChange(b);
+      priceRow.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
+      card.appendChild(priceRow);
+      card.appendChild(el("div", "sub", "Fair value " + money(basketFair(b)) + " per unit"));
+      const names = members.map(p => p.name.split(" ").pop());
+      card.appendChild(el("p", "sub bk-members",
+        names.slice(0, 6).join(" · ") + (names.length > 6 ? " · +" + (names.length - 6) + " more" : "")));
+      const own = store.owned("basket", b.key);
+      const ownLine = el("p", "sub bk-owned");
+      if (own.shares > 0) ownLine.textContent = "You own " + own.shares.toFixed(1) + " units · avg cost " + money(own.cost / own.shares);
+      card.appendChild(ownLine);
+      const br = el("div", "btn-row");
+      const buy = el("button", "btn small", "Buy 1 unit · " + money(basketPrice(b)));
+      buy.addEventListener("click", () => {
+        store.trade({ kind: "buy", type: "basket", id: b.key, shares: 1, price: basketPrice(b) });
+        toast("Bought 1 unit of " + b.name + " at " + money(basketPrice(b)));
+        viewBaskets();
+      });
+      br.appendChild(buy);
+      if (own.shares > 0) {
+        const sell = el("button", "btn small ghost", "Sell 1");
+        sell.addEventListener("click", () => {
+          store.trade({ kind: "sell", type: "basket", id: b.key, shares: Math.min(1, own.shares), price: basketPrice(b) });
+          toast("Sold 1 unit of " + b.name + " at " + money(basketPrice(b)));
+          viewBaskets();
+        });
+        br.appendChild(sell);
+      }
+      card.appendChild(br);
+      row.appendChild(card);
+    });
+    section.appendChild(row);
+    app.appendChild(section);
+  });
+
+  const note = el("p", "sub bk-note",
+    "Basket units are marked to the live average of member prices — one athlete's injury or slump doesn't sink your investment.");
+  app.appendChild(note);
 }
 
 /* ---------- time machine ---------- */
@@ -1097,6 +1163,7 @@ function route() {
   $("#tooltip").hidden = true;
   window.scrollTo(0, 0);
   if (seg[0] === "athlete" && seg[1]) return viewAthlete(Number(seg[1]));
+  if (seg[0] === "baskets") return viewBaskets();
   if (seg[0] === "machine") return viewMachine(params);
   if (seg[0] === "portfolio") return viewPortfolio();
   if (seg[0] === "list") return viewList();

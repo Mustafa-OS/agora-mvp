@@ -321,3 +321,13 @@ table.seasons tr:hover td { background: var(--surface-2); }
 @media (max-width: 920px) {
   .ath-grid { grid-template-columns: 1fr; }
 }
+
+/* ---------- baskets tab ---------- */
+.bk-promo {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; margin-bottom: 24px; flex-wrap: wrap;
+}
+.bk-promo h2 { margin: 0 0 4px; font-size: 18px; }
+.bk-members { margin-top: 8px; }
+.bk-owned { min-height: 16px; margin-top: 4px; color: var(--up); }
+.bk-note { margin: 6px 0 30px; color: var(--ink-3); }
