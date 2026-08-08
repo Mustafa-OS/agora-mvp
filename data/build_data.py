@@ -57,8 +57,8 @@ COLLEGE = [
      8, 0.990, 540, 4.7, 16, 4, 64, "Active",
      "Shifty lead guard — the highest-usage freshman offense in the ACC."),
     # Team demo listing: Agora co-founder, listed with consent; stats are demo.
-    ("Azan Evans", "NUS", "NUS", "SG", "SG", "Sophomore", 20, 26, 29.5, 14.6, 4.1, 3.6, 1.2, 0.3, 2.1, .562, 1.9,
-     78, 0.958, 45, 5.8, 12, 1, 38, "Emerging",
+    ("Azan Evans", "NUS", "NUS", "SG", "SG", "Sophomore", 20, 31, 33.5, 19.8, 5.3, 5.9, 1.4, 0.4, 2.0, .588, 2.3,
+     9, 0.990, 480, 6.6, 24, 5, 66, "Active",
      "Four-star recruit turned founder — now at NUS, building the market he plays in. Team demo listing."),
 ]
 AZAN_DEMO = {"Azan Evans"}   # real team member, listed with consent, demo stats

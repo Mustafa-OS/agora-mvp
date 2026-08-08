@@ -100,27 +100,25 @@
     <span class="tok">$AZAN</span>
   </div>
   <div class="price-row">
-    <span class="price" id="price">$13.90</span>
+    <span class="price" id="price">$197.24</span>
     <span class="delta" id="delta">▲ +0.0%</span>
   </div>
-  <div class="sub">Last traded price · Agora fair value $13.90 · <span id="vol">0</span> trades tonight</div>
+  <div class="sub">Last traded price · Agora fair value $197.24 · <span id="vol">0</span> trades this season</div>
   <svg class="chart" id="chart" width="584" height="130" viewBox="0 0 584 130" aria-label="live price"></svg>
 </div>
 
 <script>
 (() => {
-  const START = 13.90;
+  const START = 197.24;
   const SCRIPT = [
-    ["Pull-up three ✓", "Q1 04:12 · $AZAN +3 PTS", +1.40, false],
-    ["And-one finish ✓", "Q1 01:45 · fouled, converts", +1.10, false],
-    ["Turnover", "Q2 08:30 · stripped on the drive", -0.60, true],
-    ["Corner three ✓", "Q2 05:02 · 3-for-3 from deep", +1.80, false],
-    ["Chase-down block", "Q2 00:41 · momentum swing", +1.30, false],
-    ["12 PTS at the half", "market re-rating live", +2.20, false],
-    ["Steal → dunk", "Q3 07:19 · house on fire", +2.60, false],
-    ["Missed FT", "Q3 03:55", -0.40, true],
-    ["Step-back three ✓", "Q4 06:24 · 21 PTS", +2.90, false],
-    ["Game-winner ✓✓", "Q4 00:02 · 24 PTS / 6 AST", +4.80, false],
+    ["20+ points, six straight games", "Weeks 5–6 · scoring streak", +8.60, false],
+    ["Career-high 15 rebounds", "Game 13 · glass cleaned", +6.20, false],
+    ["Back-to-back triple-doubles", "Games 14–15 · first in NUS history", +9.40, false],
+    ["Season-high 6 blocks", "Game 16 · rim closed", +5.80, false],
+    ["League Player of the Week", "Week 6 honors", +7.40, false],
+    ["Career-high 34 points", "Game 17 · takeover", +9.80, false],
+    ["Named Mid-Season All-League Five", "Season honors", +10.20, false],
+    ["Seventh straight win as starter", "Team surge · undefeated stretch", +6.40, false],
   ];
   let i = 0, price = START, target = START, pts = [[0, START]], auto = null, vol = 0;
 

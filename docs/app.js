@@ -1274,7 +1274,8 @@ function viewWelcome() {
   const btn = el("button", "btn welcome-btn", "JOIN TODAY");
   btn.addEventListener("click", () => {
     document.body.classList.remove("splash-mode");
-    location.hash = "#/market";
+    const az = P.find(x => x.name === "Azan Evans");
+    location.hash = az ? "#/athlete/" + az.id : "#/market";
   });
   wrap.appendChild(btn);
   wrap.appendChild(el("p", "welcome-fine", "Simulated demo · not a securities offering"));
