@@ -1258,6 +1258,29 @@ function viewLedger() {
   render();
 }
 
+/* ---------- welcome splash (filming / onboarding) ---------- */
+function viewWelcome() {
+  document.title = "Agora — Join today";
+  document.body.classList.add("splash-mode");
+  app.replaceChildren();
+  const wrap = el("div", "welcome");
+  const logo = new Image();
+  logo.src = "logo.png";
+  logo.alt = "Agora";
+  logo.className = "welcome-logo";
+  wrap.appendChild(logo);
+  wrap.appendChild(el("div", "welcome-word", "AGORA"));
+  wrap.appendChild(el("p", "welcome-tag", "Own the upside of tomorrow's athletes."));
+  const btn = el("button", "btn welcome-btn", "JOIN TODAY");
+  btn.addEventListener("click", () => {
+    document.body.classList.remove("splash-mode");
+    location.hash = "#/market";
+  });
+  wrap.appendChild(btn);
+  wrap.appendChild(el("p", "welcome-fine", "Simulated demo · not a securities offering"));
+  app.appendChild(wrap);
+}
+
 /* ---------- join (live room demo) ---------- */
 function viewJoin() {
   document.title = "Agora — Join the live demo";
@@ -1330,6 +1353,7 @@ function viewDisclosures() {
 /* ---------- router ---------- */
 const state = {};
 function route() {
+  document.body.classList.remove("splash-mode");
   const hash = location.hash || "#/market";
   const [path, query] = hash.slice(2).split("?");
   const params = new URLSearchParams(query || "");
@@ -1345,6 +1369,7 @@ function route() {
   if (seg[0] === "baskets") return viewBaskets();
   if (seg[0] === "portfolio") return viewPortfolio();
   if (seg[0] === "ledger") return viewLedger();
+  if (seg[0] === "welcome") return viewWelcome();
   if (seg[0] === "join") return viewJoin();
   if (seg[0] === "disclosures") return viewDisclosures();
   return viewMarket();
