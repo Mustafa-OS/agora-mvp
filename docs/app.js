@@ -443,8 +443,7 @@ function viewMarket() {
   h1.append("Own the upside of ", (() => el("em", null, "tomorrow's athletes."))());
   hero.appendChild(h1);
   hero.appendChild(el("p", null,
-    "High school and college athletes, valued by a transparent six-dimension Agora Score and traded as tokens on a verifiable ledger. " +
-    "The engine suggests fair value; the market sets the price. Robinhood opened stocks. Coinbase opened crypto. Agora opens athletes."));
+    "Scored transparently. Traded as tokens. Settled on a verifiable ledger."));
   const totalCap = LISTED.reduce((a, p) => a + lastTrade(p) * SHARES_OUT, 0);
   const topScore = P.reduce((a, p) => (p.score > a.score ? p : a));
   const tiles = el("div", "tiles");
@@ -464,7 +463,7 @@ function viewMarket() {
   const promo = el("section", "panel bk-promo");
   const pLeft = el("div");
   pLeft.appendChild(el("h2", null, "Index baskets"));
-  pLeft.appendChild(el("p", "sub", "Own many athletes in one unit — by school, class, position, or level."));
+  pLeft.appendChild(el("p", "sub", "One unit, many athletes — by school, class, or position."));
   promo.appendChild(pLeft);
   const pBtn = el("button", "btn", "Explore baskets →");
   pBtn.addEventListener("click", () => { location.hash = "#/baskets"; });
@@ -697,7 +696,7 @@ function viewAthlete(id) {
       chartSub.replaceChildren();
       chartSub.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
       chartSub.appendChild(document.createTextNode(
-        " over " + title + " · quiet days move <2% — bigger gaps only on news · hover to inspect"));
+        " · " + title));
       const evd = state.range === "all" ? p.events : [];
       buildChart(chartBox, [{ name: p.name, color: "#0062FF", pts }], {
         height: 300, ariaLabel: p.name + " price history " + title,
@@ -1017,8 +1016,7 @@ function viewBaskets() {
   const head = el("div", "view-head");
   head.appendChild(el("h1", null, "Baskets"));
   head.appendChild(el("p", null,
-    "Index funds for athletes: ETF-style units priced as the equal-weight average of member last trades. " +
-    "Invest by school, class, position, or level — one injury never sinks the unit. Minors are never included."));
+    "ETF-style units priced off member last trades. One injury never sinks the basket."));
   app.appendChild(head);
   const groups = [...new Set(BASKETS.map(b => b.group))];
   groups.forEach(g => {
@@ -1267,8 +1265,7 @@ function viewJoin() {
   const head = el("div", "view-head");
   head.appendChild(el("h1", null, "Trade it yourself — right now"));
   head.appendChild(el("p", null,
-    "Scan with your phone camera. Every device gets its own private market sandbox: your trades move your prices, " +
-    "settle on your own verifiable ledger, and reset whenever you like. Simulated dollars — nothing real is bought or sold."));
+    "Scan to open your own market sandbox — your trades, your prices, your ledger. Simulated dollars."));
   app.appendChild(head);
 
   const grid = el("div", "grid-2 join-grid");
