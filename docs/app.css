@@ -331,3 +331,84 @@ table.seasons tr:hover td { background: var(--surface-2); }
 .bk-members { margin-top: 8px; }
 .bk-owned { min-height: 16px; margin-top: 4px; color: var(--up); }
 .bk-note { margin: 6px 0 30px; color: var(--ink-3); }
+
+/* ================= v3: glass polish ================= */
+.panel.glass {
+  background: linear-gradient(180deg, rgba(255,255,255,.045), rgba(255,255,255,.02));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid rgba(255,255,255,.09);
+}
+.center { display: flex; flex-direction: column; align-items: center; }
+.center-text { text-align: center; }
+.mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; }
+.fine { font-size: 11.5px; color: var(--ink-3); }
+
+/* score orb */
+.orb { position: relative; margin: 10px auto 6px; filter: drop-shadow(0 0 18px color-mix(in srgb, var(--orb-c) 35%, transparent)); }
+.orb svg { width: 100%; height: 100%; }
+.orb-inner { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.orb-inner b { font-size: 34px; line-height: 1; color: var(--orb-c); font-variant-numeric: tabular-nums; }
+.orb-inner span { font-size: 11px; color: var(--ink-2); margin-top: 3px; letter-spacing: .04em; text-transform: uppercase; }
+
+/* score grid + radar */
+.score-grid { display: grid; grid-template-columns: 260px 1fr 1fr; gap: 14px; margin-bottom: 14px; }
+.radar-box svg { width: 100%; height: auto; }
+.score-chip { font-variant-numeric: tabular-nums; font-size: 15px; }
+
+/* badges */
+.badge-minor {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 99px;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .03em;
+  color: #E5B84B; border: 1px solid rgba(229,184,75,.45); background: rgba(229,184,75,.08);
+}
+.badge-demo {
+  display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 99px;
+  font-size: 10.5px; font-weight: 600; color: var(--ink-3); border: 1px dashed rgba(255,255,255,.25);
+}
+.token-tag { color: #3DFF8C; border-color: rgba(61,255,140,.4); }
+.avatar.big { width: 56px; height: 56px; font-size: 18px; }
+.ath-price .p.analytics { font-size: 22px; color: var(--ink-2); }
+
+/* safeguard + projections */
+.safeguard { border-color: rgba(229,184,75,.4); }
+.safeguard h2 { color: #E5B84B; }
+.proj-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 12px 0; }
+.proj-card { border: 1px solid var(--hairline); border-radius: 12px; padding: 14px; }
+.proj-card.focus { border-color: rgba(61,255,140,.4); background: rgba(61,255,140,.04); }
+.proj-card b { font-size: 22px; display: block; margin: 6px 0 4px; }
+.p-tag { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
+
+/* comparables */
+.comp-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 10px; }
+.comp-card { display: block; border: 1px solid var(--hairline); border-radius: 12px; padding: 13px; color: var(--ink); text-decoration: none; transition: border-color .15s; }
+.comp-card:hover { border-color: rgba(61,255,140,.45); }
+.comp-card b { display: block; margin-top: 6px; }
+
+/* compare */
+.chips.wrap { flex-wrap: wrap; }
+.cmp-table td, .cmp-table th { padding: 9px 12px; border-bottom: 1px solid var(--hairline); text-align: left; }
+.cmp-table th.num, .cmp-table td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.cmp-table .best { font-weight: 700; }
+
+/* methodology sliders */
+.wsliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px 22px; margin-top: 10px; }
+.wslider input[type="range"] { width: 100%; accent-color: #22c55e; margin: 6px 0 4px; }
+.sim-row { display: grid; grid-template-columns: 34px 190px 1fr 52px 110px; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--hairline); }
+.sim-row .meter.grow { height: 8px; }
+.delta-note { text-align: right; }
+
+/* ledger */
+.block-card { border: 1px solid var(--hairline); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; }
+.tx-line { margin: 6px 0 2px; font-size: 13.5px; }
+.tx-line b { margin-right: 6px; }
+.verify-status { font-size: 13px; color: var(--ink-2); align-self: center; }
+.verify-status.ok { color: var(--up); font-weight: 600; }
+.verify-status.bad { color: var(--down); font-weight: 600; }
+.disc { margin-bottom: 14px; }
+
+@media (max-width: 1000px) {
+  .score-grid { grid-template-columns: 1fr; }
+  .sim-row { grid-template-columns: 28px 1fr 60px; }
+  .sim-row .meter.grow, .sim-row .delta-note { display: none; }
+}

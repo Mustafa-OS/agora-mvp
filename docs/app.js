@@ -1,10 +1,17 @@
-/* Agora MVP — single-file app. No dependencies, no network. */
+/* Agora v3 — HS & college athlete asset market. Single-file app, no deps. */
 (() => {
 "use strict";
 
 const DATA = window.AGORA_DATA;
 const P = DATA.players;
+const LISTED = P.filter(p => p.price != null);
 const byId = Object.fromEntries(P.map(p => [p.id, p]));
+const W_DEFAULT = DATA.weights;
+const DIMS = [
+  ["production", "Production"], ["availability", "Availability"],
+  ["recruiting", "Recruiting"], ["audience", "Audience"],
+  ["commercial", "Commercial"], ["runway", "Runway"],
+];
 const $ = sel => document.querySelector(sel);
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -21,41 +28,26 @@ const compact = v => {
   if (v >= 1e6) return "$" + (v / 1e6).toFixed(0) + "M";
   return "$" + Math.round(v).toLocaleString();
 };
+const kfmt = k => (k >= 1000 ? (k / 1000).toFixed(1) + "M" : Math.round(k) + "K");
 const pct = (v, digits = 1) => (v >= 0 ? "+" : "") + v.toFixed(digits) + "%";
 const arrow = v => (Math.abs(v) < 0.05 ? "—" : v >= 0 ? "▲" : "▼");
 const initials = name => name.split(" ").map(w => w[0]).slice(0, 2).join("");
-const SHARES_OUT = 1e6; // fictional float per athlete, for market-cap texture
-
-/* ---------- S&P index ---------- */
-const SHOW_SPX = false;   // benchmark hidden for now — flip to true to restore
-const spxLevel = (() => {
-  const lv = { 2003: 100 };
-  for (let y = 2003; y <= 2026; y++) {
-    const r = DATA.spx[y] ?? 8;
-    lv[y + 1] = lv[y] * (1 + r / 100);
-  }
-  return t => {
-    const y = Math.floor(t);
-    const f = t - y;
-    const a = lv[Math.min(2027, Math.max(2003, y))] ?? 100;
-    const b = lv[Math.min(2027, Math.max(2003, y + 1))] ?? a;
-    return a + (b - a) * f;
-  };
-})();
+const SHARES_OUT = 1e5; // notional float per athlete
+const scoreColor = s => (s >= 85 ? "#3DFF8C" : s >= 70 ? "#22c55e" : s >= 60 ? "#E5B84B" : "#8B93A1");
+const scoreLabel = s => (s >= 85 ? "Elite" : s >= 75 ? "Premium" : s >= 65 ? "Strong" : s >= 55 ? "Developing" : "Emerging");
 
 /* ================================================================
-   Market layer — the engine SUGGESTS a fair value; the MARKET sets
-   the traded price. Each athlete gets a deterministic sentiment
-   premium/discount vs fair value; any trade you make becomes the
-   new last-traded price (stored in this browser).
+   Market layer — the engine SUGGESTS a fair value; the market sets
+   the traded price. Deterministic per-athlete sentiment; your trades
+   overwrite the last-traded price in this browser.
    ================================================================ */
 function sentiment(id) {
   const x = Math.sin(id * 12.9898) * 43758.5453;
-  return ((x - Math.floor(x)) - 0.45) * 0.16;   // ≈ −7% … +9%
+  return ((x - Math.floor(x)) - 0.45) * 0.16;
 }
 const marketStore = {
-  read() { try { return JSON.parse(localStorage.getItem("agora_market")) || {}; } catch { return {}; } },
-  write(v) { localStorage.setItem("agora_market", JSON.stringify(v)); },
+  read() { try { return JSON.parse(localStorage.getItem("agora_market_v3")) || {}; } catch { return {}; } },
+  write(v) { localStorage.setItem("agora_market_v3", JSON.stringify(v)); },
   setLastTrade(key, price) { const m = this.read(); m[key] = +(+price).toFixed(2); this.write(m); },
 };
 const fairValue = p => p.price;
@@ -69,89 +61,95 @@ const premChip = p => {
   const cls = Math.abs(pr) < 0.5 ? "" : pr > 0 ? "pos" : "neg";
   const label = Math.abs(pr) < 0.5 ? "at fair value"
     : Math.abs(pr).toFixed(0) + "% " + (pr > 0 ? "above" : "below") + " fair value";
-  const s = el("span", "fv-chip " + cls, label);
-  return s;
+  return el("span", "fv-chip " + cls, label);
 };
 
-/* ---------- index baskets (ETF-style) ----------
-   The deck taxonomy, live: invest by school (Duke, Kentucky…), by draft
-   class (2018, 2020, 2021, the projected 2026 college class), by position,
-   by theme, or by runway. College prospects are real listings. */
-const lastAge = p => p.seasons[p.seasons.length - 1].age;
+/* ================================================================
+   Token ledger — every trade is a token transfer recorded on a
+   hash-chained ledger (real SHA-256 via WebCrypto). Simulated
+   settlement layer: same structure as a public-chain deployment.
+   ================================================================ */
+const ledger = {
+  read() { try { return JSON.parse(localStorage.getItem("agora_ledger_v1")) || []; } catch { return []; } },
+  write(v) { localStorage.setItem("agora_ledger_v1", JSON.stringify(v)); },
+  async hashBlock(b) {
+    const payload = JSON.stringify({ i: b.i, ts: b.ts, txs: b.txs, prev: b.prev });
+    const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(payload));
+    return [...new Uint8Array(buf)].map(x => x.toString(16).padStart(2, "0")).join("");
+  },
+  async ensureGenesis() {
+    let chain = this.read();
+    if (!chain.length) {
+      const g = { i: 0, ts: Date.now(), prev: "0".repeat(64),
+                  txs: [{ type: "GENESIS", note: "Agora settlement ledger initialized" }] };
+      g.hash = await this.hashBlock(g);
+      chain = [g];
+      this.write(chain);
+    }
+    return chain;
+  },
+  async record(tx) {
+    const chain = await this.ensureGenesis();
+    const prev = chain[chain.length - 1];
+    const b = { i: prev.i + 1, ts: Date.now(), prev: prev.hash, txs: [tx] };
+    b.hash = await this.hashBlock(b);
+    chain.push(b);
+    this.write(chain);
+    return b.hash;
+  },
+  async verify() {
+    const chain = await this.ensureGenesis();
+    for (let i = 0; i < chain.length; i++) {
+      const b = chain[i];
+      if (await this.hashBlock(b) !== b.hash) return { ok: false, at: i, reason: "hash mismatch" };
+      if (i > 0 && b.prev !== chain[i - 1].hash) return { ok: false, at: i, reason: "broken link" };
+    }
+    return { ok: true, blocks: chain.length };
+  },
+  clear() { localStorage.removeItem("agora_ledger_v1"); },
+};
+const shortHash = h => h.slice(0, 6) + "…" + h.slice(-4);
+
+/* ---------- baskets ---------- */
 const BASKETS = [
-  // Flagship = one showcase basket per slide category: school / class / position
   { key: "DUKE", group: "Flagship", name: "By School — Duke Basket",
-    desc: "All Duke — NBA alumni plus current Blue Devils. Program equity, literally.", filter: p => p.school === "Duke" },
-  { key: "D21", group: "Flagship", name: "By Class — Class of 2021",
-    desc: "Five franchise pieces from one draft night, still compounding.", filter: p => p.draft === 2021 },
+    desc: "Both Blue Devils, one unit — program equity, literally.", filter: p => p.school === "Duke" },
+  { key: "HS27", group: "Flagship", name: "By Class — HS Class of 2027",
+    desc: "Every listable senior in the class — own the whole recruiting cycle.", filter: p => p.cls === "HS Class of 2027" },
   { key: "GUARD", group: "Flagship", name: "By Position — Guards Index",
-    desc: "Every point and shooting guard — playmaking and shot creation.", filter: p => p.pos === "PG" || p.pos === "SG" },
-  { key: "UK", group: "By school", name: "Kentucky Basket",
-    desc: "Big Blue Nation's export machine — the deepest school pipeline on the board.", filter: p => p.school === "Kentucky" },
-  { key: "KU", group: "By school", name: "Kansas Basket",
-    desc: "Rock Chalk — an MVP alum and the next lottery guard.", filter: p => p.school === "Kansas" },
-  { key: "S2P", group: "By school", name: "Straight-to-Pro Basket",
-    desc: "Never played college — preps-to-pros and the international pipeline.", filter: p => !p.school && p.league === "NBA" },
-  { key: "D18", group: "By draft class", name: "Class of 2018",
-    desc: "Luka, SGA, Trae, Brunson — a legendary draft, one unit.", filter: p => p.draft === 2018 },
-  { key: "D20", group: "By draft class", name: "Class of 2020",
-    desc: "The pandemic draft that out-performed — Ant, Haliburton, Maxey, Bane.", filter: p => p.draft === 2020 },
-  { key: "D26", group: "By draft class", name: "Class of 2026 (projected)",
-    desc: "The entire college board — own the whole draft class before the draft.", filter: p => p.league === "NCAA" },
-  { key: "AGX17", group: "By theme", name: "Agora Index",
-    desc: "Every listed athlete — NBA stars and college prospects, equal weight.", filter: () => true },
-  { key: "BLUE", group: "By theme", name: "Blue Chip Basket",
-    desc: "Proven superstars only. Lower beta, championship pedigree.", filter: p => p.tag === "Blue chip" },
-  { key: "GRWTH", group: "By theme", name: "Growth Basket",
-    desc: "Rising stars and recent IPOs — the upside sleeve.", filter: p => p.tag === "Growth" || p.tag === "IPO" },
+    desc: "Every listed point and shooting guard on the board.", filter: p => p.pos === "PG" || p.pos === "SG" },
+  { key: "FRESH", group: "By class", name: "College Freshmen",
+    desc: "The 2026 draft board — first-year college stars.", filter: p => p.level === "College" && p.cls === "Freshman" },
+  { key: "VETS", group: "By class", name: "Upperclassmen",
+    desc: "Juniors and seniors — proven, near-term production.", filter: p => p.cls === "Junior" || p.cls === "Senior" },
+  { key: "KYP", group: "By school", name: "Kentucky Pipeline",
+    desc: "The commonwealth's board — Lexington and Louisville.", filter: p => p.state === "KY" },
+  { key: "FLP", group: "By school", name: "Florida Preps",
+    desc: "The nation's deepest prep pipeline, one unit.", filter: p => p.state === "FL" },
   { key: "WING", group: "By position", name: "Wings Index",
-    desc: "The forwards — two-way versatility, the league's premium archetype.", filter: p => p.pos === "SF" },
+    desc: "The forwards — two-way versatility.", filter: p => p.pos === "SF" },
   { key: "BIGS", group: "By position", name: "Bigs Index",
-    desc: "Power forwards and centers — rim protection, rebounding, interior scoring.", filter: p => p.pos === "PF" || p.pos === "C" },
-  { key: "YOUNG", group: "By runway", name: "Young Core (≤26)",
-    desc: "Longer runway, higher risk/reward — the freshman-class analogue.", filter: p => lastAge(p) <= 26 },
-  { key: "PRIME", group: "By runway", name: "Prime Years (27–30)",
-    desc: "The peak production window — established, near-term value.", filter: p => lastAge(p) >= 27 && lastAge(p) <= 30 },
-  { key: "VET", group: "By runway", name: "Veterans (31+)",
-    desc: "Proven greats late in the curve — the senior-class analogue.", filter: p => lastAge(p) >= 31 },
+    desc: "Power forwards and centers — interior force.", filter: p => p.pos === "PF" || p.pos === "C" },
+  { key: "CIDX", group: "By level", name: "College Index",
+    desc: "Every listed college athlete, equal weight.", filter: p => p.level === "College" },
+  { key: "HIDX", group: "By level", name: "High School Index",
+    desc: "Every listable prep athlete, equal weight.", filter: p => p.level === "High School" },
 ];
-const basketMembers = b => P.filter(b.filter);
-const basketPrice = b => {
-  const m = basketMembers(b);
-  return m.reduce((a, p) => a + lastTrade(p), 0) / m.length;
-};
-const basketFair = b => {
-  const m = basketMembers(b);
-  return m.reduce((a, p) => a + fairValue(p), 0) / m.length;
-};
-const basketChange = b => {
-  const m = basketMembers(b);
-  return m.reduce((a, p) => a + p.change, 0) / m.length;
-};
+const basketMembers = b => LISTED.filter(b.filter);
+const basketPrice = b => { const m = basketMembers(b); return m.reduce((a, p) => a + lastTrade(p), 0) / m.length; };
+const basketFair = b => { const m = basketMembers(b); return m.reduce((a, p) => a + fairValue(p), 0) / m.length; };
 const byBasket = Object.fromEntries(BASKETS.map(b => [b.key, b]));
 
 /* ---------- portfolio store (trade ledger, avg-cost) ---------- */
 const store = {
   read() {
     try {
-      const v2 = JSON.parse(localStorage.getItem("agora_portfolio_v2"));
-      if (v2 && Array.isArray(v2.trades)) return v2;
-    } catch { /* fall through */ }
-    // migrate v1 entries ({pid, season, amt}) into buy trades at entry price
-    let trades = [];
-    try {
-      const v1 = JSON.parse(localStorage.getItem("agora_portfolio")) || [];
-      trades = v1.map(it => {
-        const p = byId[it.pid];
-        if (!p) return null;
-        const entry = priceAtOrAfter(p, it.season);
-        return { kind: "buy", type: "ath", id: it.pid, shares: +(it.amt / entry).toFixed(4),
-                 price: entry, season: it.season };
-      }).filter(Boolean);
-    } catch { trades = []; }
-    return { trades };
+      const v = JSON.parse(localStorage.getItem("agora_portfolio_v3"));
+      if (v && Array.isArray(v.trades)) return v;
+    } catch { /* fresh */ }
+    return { trades: [] };
   },
-  write(v) { localStorage.setItem("agora_portfolio_v2", JSON.stringify(v)); refreshBadge(); },
+  write(v) { localStorage.setItem("agora_portfolio_v3", JSON.stringify(v)); refreshBadge(); },
   trade(t) { const v = this.read(); v.trades.push(t); this.write(v); },
   clear() { this.write({ trades: [] }); },
   positions() {
@@ -159,7 +157,7 @@ const store = {
     let realized = 0;
     this.read().trades.forEach(t => {
       const key = t.type + ":" + t.id;
-      const p = pos[key] || (pos[key] = { type: t.type, id: t.id, shares: 0, cost: 0, season: t.season });
+      const p = pos[key] || (pos[key] = { type: t.type, id: t.id, shares: 0, cost: 0 });
       if (t.kind === "buy") { p.shares += t.shares; p.cost += t.shares * t.price; }
       else {
         const q = Math.min(t.shares, p.shares);
@@ -170,17 +168,16 @@ const store = {
         }
       }
     });
-    const list = Object.values(pos).filter(p => p.shares > 1e-6);
-    return { list, realized };
+    return { list: Object.values(pos).filter(p => p.shares > 1e-6), realized };
   },
   owned(type, id) {
-    const hit = this.positions().list.find(p => p.type === type && p.id === id);
-    return hit || { shares: 0, cost: 0 };
+    return this.positions().list.find(p => p.type === type && p.id === id) || { shares: 0, cost: 0 };
   },
 };
 function refreshBadge() {
   const n = store.positions().list.length;
   const b = $("#portfolioCount");
+  if (!b) return;
   b.hidden = n === 0;
   b.textContent = n;
 }
@@ -192,43 +189,35 @@ function toast(msg) {
   t.textContent = msg;
   t.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { t.hidden = true; }, 2600);
+  toastTimer = setTimeout(() => { t.hidden = true; }, 3200);
 }
 
 /* ================================================================
-   SVG chart builder
-   series: [{name, color, pts: [[t, value], ...]}]  (shared-ish x domains)
-   opts: {height, yFmt, legend, endLabels, annotatePeak, tooltipRows(t) }
+   SVG chart builder (line/area with crosshair + tooltip)
    ================================================================ */
 function buildChart(container, series, opts = {}) {
   const W = 960, H = opts.height || 300;
-  const M = { l: 56, r: opts.endLabels ? 86 : 20, t: 14, b: 30 };
+  const M = { l: 56, r: 20, t: 14, b: 30 };
   const iw = W - M.l - M.r, ih = H - M.t - M.b;
-
   const allPts = series.flatMap(s => s.pts);
   const x0 = Math.min(...allPts.map(p => p[0])), x1 = Math.max(...allPts.map(p => p[0]));
   let y1 = Math.max(...allPts.map(p => p[1])) * 1.06;
   let y0 = opts.zeroBase ? 0 : Math.min(...allPts.map(p => p[1])) * 0.92;
-  if (y1 - y0 < 1e-9) { y1 += 1; }
+  if (y1 - y0 < 1e-9) y1 += 1;
   const X = t => M.l + ((t - x0) / (x1 - x0 || 1)) * iw;
   const Y = v => M.t + ih - ((v - y0) / (y1 - y0)) * ih;
-
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("role", "img");
   svg.setAttribute("aria-label", opts.ariaLabel || "Price chart");
-
   const add = (parent, tag, attrs) => {
     const n = document.createElementNS("http://www.w3.org/2000/svg", tag);
     for (const k in attrs) n.setAttribute(k, attrs[k]);
     parent.appendChild(n);
     return n;
   };
-
-  // y gridlines + ticks (nice steps)
   const span = y1 - y0;
-  const rawStep = span / 4;
-  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const mag = Math.pow(10, Math.floor(Math.log10(span / 4)));
   const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= 5.5) || 10 * mag;
   const yFmt = opts.yFmt || (v => "$" + Math.round(v).toLocaleString());
   for (let v = Math.ceil(y0 / step) * step; v <= y1 + 1e-9; v += step) {
@@ -237,65 +226,23 @@ function buildChart(container, series, opts = {}) {
     t.textContent = yFmt(v);
     t.style.fontVariantNumeric = "tabular-nums";
   }
-  // x ticks: years
-  const yearSpan = x1 - x0;
-  const yearStep = yearSpan > 16 ? 4 : yearSpan > 8 ? 2 : 1;
-  for (let y = Math.ceil(x0); y <= Math.floor(x1); y++) {
-    if ((y - Math.ceil(x0)) % yearStep !== 0) continue;
-    const t = add(svg, "text", { x: X(y), y: H - 8, "text-anchor": "middle", fill: "#737c86", "font-size": 11 });
-    t.textContent = String(y);
-  }
   add(svg, "line", { x1: M.l, x2: W - M.r, y1: Y(y0), y2: Y(y0), stroke: "#3a4048", "stroke-width": 1 });
-
-  // series (areas under lines only for the first / primary series)
   series.forEach((s, si) => {
     const d = s.pts.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
     if (si === 0 && opts.area !== false) {
       const last = s.pts[s.pts.length - 1], first = s.pts[0];
-      add(svg, "path", {
-        d: d + ` L ${X(last[0]).toFixed(1)} ${Y(y0)} L ${X(first[0]).toFixed(1)} ${Y(y0)} Z`,
-        fill: s.color, opacity: 0.1,
-      });
+      add(svg, "path", { d: d + ` L ${X(last[0]).toFixed(1)} ${Y(y0)} L ${X(first[0]).toFixed(1)} ${Y(y0)} Z`, fill: s.color, opacity: 0.1 });
     }
     add(svg, "path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
     const last = s.pts[s.pts.length - 1];
     add(svg, "circle", { cx: X(last[0]), cy: Y(last[1]), r: 4.5, fill: s.color, stroke: "#14171c", "stroke-width": 2 });
   });
-
-  // peak annotation (selective direct label, primary series only)
-  if (opts.annotatePeak) {
-    const s = series[0];
-    const peak = s.pts.reduce((a, b) => (b[1] > a[1] ? b : a));
-    add(svg, "circle", { cx: X(peak[0]), cy: Y(peak[1]), r: 3.5, fill: s.color, stroke: "#14171c", "stroke-width": 2 });
-    const above = Y(peak[1]) > 26;
-    const t = add(svg, "text", {
-      x: Math.min(Math.max(X(peak[0]), M.l + 30), W - M.r - 30),
-      y: above ? Y(peak[1]) - 10 : Y(peak[1]) + 18,
-      "text-anchor": "middle", fill: "#a9b1ba", "font-size": 11, "font-weight": 600,
-    });
-    t.textContent = "peak " + yFmt(peak[1]);
-  }
-
-  // end labels for multi-series (with collision nudge)
-  if (opts.endLabels && series.length > 1) {
-    const ends = series.map(s => ({ name: s.name, color: s.color, y: Y(s.pts[s.pts.length - 1][1]) }))
-      .sort((a, b) => a.y - b.y);
-    for (let i = 1; i < ends.length; i++)
-      if (ends[i].y - ends[i - 1].y < 15) ends[i].y = ends[i - 1].y + 15;
-    ends.forEach(e => {
-      const t = add(svg, "text", { x: W - M.r + 10, y: e.y + 4, fill: "#a9b1ba", "font-size": 11.5, "font-weight": 600 });
-      t.textContent = e.name;
-    });
-  }
-
-  // crosshair + hover layer (snaps to nearest x of primary series)
   const cross = add(svg, "line", { y1: M.t, y2: M.t + ih, stroke: "#3a4048", "stroke-width": 1, opacity: 0 });
   const dots = series.map(s => add(svg, "circle", { r: 4, fill: s.color, stroke: "#14171c", "stroke-width": 2, opacity: 0 }));
   const hit = add(svg, "rect", { x: M.l, y: M.t, width: iw, height: ih, fill: "transparent" });
   const prim = series[0].pts;
   const tooltip = $("#tooltip");
-
-  function showAt(idx, clientX, clientY) {
+  function showAt(idx, cx, cy) {
     const t = prim[idx][0];
     cross.setAttribute("x1", X(t)); cross.setAttribute("x2", X(t));
     cross.setAttribute("opacity", 1);
@@ -305,33 +252,31 @@ function buildChart(container, series, opts = {}) {
       dots[si].setAttribute("cx", X(s.pts[best][0]));
       dots[si].setAttribute("cy", Y(s.pts[best][1]));
       dots[si].setAttribute("opacity", 1);
-      s._hoverVal = s.pts[best][1];
+      s._hv = s.pts[best][1];
     });
     tooltip.replaceChildren();
-    const rows = opts.tooltipRows ? opts.tooltipRows(t) : null;
-    if (rows && rows.title) tooltip.appendChild(el("div", "tt-title", rows.title));
+    if (opts.tooltipTitle) tooltip.appendChild(el("div", "tt-title", opts.tooltipTitle));
     series.forEach(s => {
       const r = el("div", "tt-row");
       const key = el("i"); key.style.borderTopColor = s.color;
       r.appendChild(key);
-      r.appendChild(el("span", "tt-val", yFmt(s._hoverVal)));
+      r.appendChild(el("span", "tt-val", yFmt(s._hv)));
       r.appendChild(el("span", null, s.name));
       tooltip.appendChild(r);
     });
-    if (rows && rows.extra) rows.extra.forEach(line => tooltip.appendChild(el("div", null, line)));
     tooltip.hidden = false;
     const pad = 14, tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
-    let tx = clientX + pad, ty = clientY - th - pad;
-    if (tx + tw > innerWidth - 8) tx = clientX - tw - pad;
-    if (ty < 8) ty = clientY + pad;
+    let tx = cx + pad, ty = cy - th - pad;
+    if (tx + tw > innerWidth - 8) tx = cx - tw - pad;
+    if (ty < 8) ty = cy + pad;
     tooltip.style.left = tx + "px";
     tooltip.style.top = ty + "px";
   }
-  function hide() {
+  const hide = () => {
     cross.setAttribute("opacity", 0);
     dots.forEach(d => d.setAttribute("opacity", 0));
     tooltip.hidden = true;
-  }
+  };
   hit.addEventListener("pointermove", e => {
     const r = svg.getBoundingClientRect();
     const t = x0 + ((e.clientX - r.left) / r.width * W - M.l) / iw * (x1 - x0);
@@ -340,46 +285,107 @@ function buildChart(container, series, opts = {}) {
     showAt(best, e.clientX, e.clientY);
   });
   hit.addEventListener("pointerleave", hide);
-
-  // keyboard parity
   const box = el("div", "chart-box");
-  box.tabIndex = 0;
-  box.setAttribute("aria-label", (opts.ariaLabel || "Chart") + " — use left and right arrow keys to read values");
-  let kIdx = prim.length - 1;
-  box.addEventListener("keydown", e => {
-    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
-    e.preventDefault();
-    kIdx = Math.max(0, Math.min(prim.length - 1, kIdx + (e.key === "ArrowRight" ? 1 : -1)));
-    const r = svg.getBoundingClientRect();
-    const cx = r.left + (X(prim[kIdx][0]) / W) * r.width;
-    showAt(kIdx, cx, r.top + r.height / 2);
-  });
-  box.addEventListener("blur", hide);
-
-  if (opts.legend && series.length > 1) {
-    const lg = el("div", "chart-legend");
-    series.forEach(s => {
-      const k = el("span", "lg-key");
-      const sw = el("i"); sw.style.borderTopColor = s.color;
-      k.appendChild(sw);
-      k.appendChild(document.createTextNode(s.name));
-      lg.appendChild(k);
-    });
-    container.appendChild(lg);
-  }
   box.appendChild(svg);
   container.appendChild(box);
 }
 
+/* ---------- score orb + radar + bars ---------- */
+function scoreOrb(score, size = 120) {
+  const c = scoreColor(score);
+  const wrap = el("div", "orb");
+  wrap.style.width = wrap.style.height = size + "px";
+  wrap.style.setProperty("--orb-c", c);
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 120 120");
+  const track = document.createElementNS(ns, "circle");
+  track.setAttribute("cx", 60); track.setAttribute("cy", 60); track.setAttribute("r", 52);
+  track.setAttribute("fill", "none"); track.setAttribute("stroke", "rgba(255,255,255,.08)");
+  track.setAttribute("stroke-width", 7);
+  svg.appendChild(track);
+  const arc = document.createElementNS(ns, "circle");
+  const circ = 2 * Math.PI * 52;
+  arc.setAttribute("cx", 60); arc.setAttribute("cy", 60); arc.setAttribute("r", 52);
+  arc.setAttribute("fill", "none"); arc.setAttribute("stroke", c);
+  arc.setAttribute("stroke-width", 7); arc.setAttribute("stroke-linecap", "round");
+  arc.setAttribute("stroke-dasharray", (circ * score / 100).toFixed(1) + " " + circ.toFixed(1));
+  arc.setAttribute("transform", "rotate(-90 60 60)");
+  svg.appendChild(arc);
+  wrap.appendChild(svg);
+  const inner = el("div", "orb-inner");
+  inner.appendChild(el("b", null, score.toFixed(0)));
+  inner.appendChild(el("span", null, scoreLabel(score)));
+  wrap.appendChild(inner);
+  return wrap;
+}
+
+function radar(container, entries, size = 320) {
+  // entries: [{name, color, subs}]
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 340 320");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", "Six-dimension score radar");
+  const cx = 170, cy = 160, R = 110;
+  const angle = i => -Math.PI / 2 + i * Math.PI / 3;
+  const pt = (i, r) => [cx + Math.cos(angle(i)) * r, cy + Math.sin(angle(i)) * r];
+  const add = attrs => {
+    const n = document.createElementNS(ns, attrs.tag);
+    for (const k in attrs) if (k !== "tag") n.setAttribute(k, attrs[k]);
+    svg.appendChild(n);
+    return n;
+  };
+  [0.33, 0.66, 1].forEach(f => {
+    const d = DIMS.map((_, i) => pt(i, R * f)).map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + " Z";
+    add({ tag: "path", d, fill: "none", stroke: "#262b31", "stroke-width": 1 });
+  });
+  DIMS.forEach((dim, i) => {
+    const [x, y] = pt(i, R);
+    add({ tag: "line", x1: cx, y1: cy, x2: x, y2: y, stroke: "#262b31", "stroke-width": 1 });
+    const [lx, ly] = pt(i, R + 22);
+    const t = add({ tag: "text", x: lx, y: ly + 4, "text-anchor": "middle", fill: "#a9b1ba", "font-size": 11.5, "font-weight": 600 });
+    t.textContent = dim[1];
+  });
+  entries.forEach(e => {
+    const d = DIMS.map(([k], i) => pt(i, R * (e.subs[k] / 100)))
+      .map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + " Z";
+    add({ tag: "path", d, fill: e.color, opacity: 0.14 });
+    add({ tag: "path", d, fill: "none", stroke: e.color, "stroke-width": 2, "stroke-linejoin": "round" });
+  });
+  const box = el("div", "radar-box");
+  box.appendChild(svg);
+  container.appendChild(box);
+}
+
+function dimensionBars(container, subs, weights = W_DEFAULT) {
+  const grid = el("div", "breakdown");
+  DIMS.forEach(([k, label]) => {
+    const row = el("div", "meter-row");
+    const lab = el("div", "m-label");
+    lab.appendChild(el("span", null, label + " · " + Math.round(weights[k] * 100) + "%"));
+    lab.appendChild(el("b", null, subs[k].toFixed(0) + " / 100"));
+    row.appendChild(lab);
+    const m = el("div", "meter");
+    const fill = el("i");
+    fill.style.width = subs[k].toFixed(1) + "%";
+    fill.style.background = scoreColor(subs[k]);
+    m.appendChild(fill);
+    row.appendChild(m);
+    grid.appendChild(row);
+  });
+  container.appendChild(grid);
+}
+
 /* ---------- sparkline ---------- */
-function sparkline(seasons) {
-  const pts = seasons.slice(-8).map(s => s.price);
+function sparkline(series) {
+  const pts = series.map(p => p[1]);
+  if (pts.length < 2) return el("span", "sub", "—");
   const W = 110, H = 34, pad = 4;
   const min = Math.min(...pts), max = Math.max(...pts);
-  const X = i => pad + (i / (pts.length - 1 || 1)) * (W - 2 * pad);
+  const X = i => pad + (i / (pts.length - 1)) * (W - 2 * pad);
   const Y = v => H - pad - ((v - min) / (max - min || 1)) * (H - 2 * pad);
   const d = pts.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
-  const up = pts[pts.length - 1] >= pts[pts.length - 2];
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   svg.setAttribute("width", W); svg.setAttribute("height", H);
@@ -387,54 +393,35 @@ function sparkline(seasons) {
   const path = document.createElementNS(ns, "path");
   path.setAttribute("d", d); path.setAttribute("fill", "none");
   path.setAttribute("stroke", "#566068"); path.setAttribute("stroke-width", 1.5);
-  path.setAttribute("stroke-linejoin", "round");
   svg.appendChild(path);
   const dot = document.createElementNS(ns, "circle");
   dot.setAttribute("cx", X(pts.length - 1)); dot.setAttribute("cy", Y(pts[pts.length - 1]));
-  dot.setAttribute("r", 3); dot.setAttribute("fill", up ? "#4ade80" : "#f87171");
+  dot.setAttribute("r", 3); dot.setAttribute("fill", pts[pts.length - 1] >= pts[0] ? "#4ade80" : "#f87171");
   dot.setAttribute("stroke", "#14171c"); dot.setAttribute("stroke-width", 1.5);
   svg.appendChild(dot);
   return svg;
 }
 
+/* ---------- badges ---------- */
+const minorBadge = () => el("span", "badge-minor", "Analytics Only · Under 18");
+const demoBadge = () => el("span", "badge-demo", "Fictional demo athlete");
+
 /* ---------- ticker ---------- */
 function buildTicker() {
   const track = $("#tickerTrack");
   track.replaceChildren();
-  const items = [...P, ...P]; // duplicated for seamless loop
-  items.forEach(p => {
+  [...LISTED, ...LISTED].forEach(p => {
     const s = el("span", "tick-item");
-    const b = el("b", null, tickerSym(p.name));
-    s.appendChild(b);
+    s.appendChild(el("b", null, p.token));
     s.appendChild(document.createTextNode(money(lastTrade(p)) + " "));
-    const d = el("span", "delta " + (p.change >= 0 ? "pos" : "neg"), arrow(p.change) + " " + pct(p.change));
-    s.appendChild(d);
+    const pr = premium(p);
+    s.appendChild(el("span", "delta " + (pr >= 0 ? "pos" : "neg"), arrow(pr) + " " + pct(pr)));
     track.appendChild(s);
   });
 }
-const tickerSym = name => name.split(" ").pop().slice(0, 4).toUpperCase();
 
 /* ================================================================ views */
 const app = $("#app");
-
-function heroTiles() {
-  const totalCap = P.reduce((a, p) => a + lastTrade(p) * SHARES_OUT, 0);
-  // best 5-season runner
-  let best = null;
-  P.forEach(p => {
-    const s = p.seasons;
-    if (s.length < 6) return;
-    const r = (s[s.length - 1].price / s[s.length - 6].price - 1) * 100;
-    if (!best || r > best.r) best = { p, r };
-  });
-  const winners = P.filter(p => p.change >= 0).length;
-  return [
-    { label: "Market cap (listed athletes)", value: compact(totalCap) },
-    { label: "Athletes listed", value: String(P.length) },
-    { label: "Best 5-season return", value: pct(best.r, 0), sub: best.p.name, pos: best.r >= 0 },
-    { label: "Advancing / declining", value: winners + " / " + (P.length - winners) },
-  ];
-}
 
 function viewMarket() {
   document.title = "Agora — Market";
@@ -442,58 +429,56 @@ function viewMarket() {
 
   const hero = el("section", "hero");
   const h1 = el("h1");
-  h1.append("Tomorrow's greatest athletes, ", (() => { const e = el("em", null, "today."); return e; })());
+  h1.append("Own the upside of ", (() => el("em", null, "tomorrow's athletes."))());
   hero.appendChild(h1);
   hero.appendChild(el("p", null,
-    "An emerging asset class: shares in an athlete's future lifetime earnings. Our engine suggests a transparent fair value for 17 real careers — then the market trades around it, just like any exchange. Robinhood opened stocks. Coinbase opened crypto. Agora opens athletes."));
+    "High school and college athletes, valued by a transparent six-dimension Agora Score and traded as tokens on a verifiable ledger. " +
+    "The engine suggests fair value; the market sets the price. Robinhood opened stocks. Coinbase opened crypto. Agora opens athletes."));
+  const totalCap = LISTED.reduce((a, p) => a + lastTrade(p) * SHARES_OUT, 0);
+  const topScore = P.reduce((a, p) => (p.score > a.score ? p : a));
   const tiles = el("div", "tiles");
-  heroTiles().forEach(t => {
-    const tile = el("div", "tile");
-    tile.appendChild(el("div", "t-label", t.label));
-    tile.appendChild(el("div", "t-value", t.value));
-    if (t.sub) {
-      const d = el("div", "t-delta");
-      const s = el("span", t.pos ? "pos" : "neg", t.sub);
-      d.appendChild(s);
-      tile.appendChild(d);
-    }
-    tiles.appendChild(tile);
+  [["Board market cap", compact(totalCap)],
+   ["Athletes tracked", String(P.length)],
+   ["Listed for trading", String(LISTED.length)],
+   ["Top Agora Score", topScore.score.toFixed(0), topScore.name]].forEach(([l, v, sub]) => {
+    const t = el("div", "tile");
+    t.appendChild(el("div", "t-label", l));
+    t.appendChild(el("div", "t-value", v));
+    if (sub) { const d = el("div", "t-delta"); d.appendChild(el("span", "pos", sub)); t.appendChild(d); }
+    tiles.appendChild(t);
   });
   hero.appendChild(tiles);
   app.appendChild(hero);
 
-  // baskets promo -> dedicated tab
   const promo = el("section", "panel bk-promo");
   const pLeft = el("div");
   pLeft.appendChild(el("h2", null, "Index baskets"));
-  pLeft.appendChild(el("p", "sub",
-    "Own many athletes in one click — by theme, position, or runway. Diversifies single-athlete injury risk."));
+  pLeft.appendChild(el("p", "sub", "Own many athletes in one unit — by school, class, position, or level."));
   promo.appendChild(pLeft);
   const pBtn = el("button", "btn", "Explore baskets →");
   pBtn.addEventListener("click", () => { location.hash = "#/baskets"; });
   promo.appendChild(pBtn);
   app.appendChild(promo);
 
-  // controls
   const controls = el("div", "controls");
   const chips = el("div", "chips");
-  const tags = ["All", "Blue chip", "Growth", "Volatile", "Cautionary", "IPO", "College"];
-  let activeTag = state.marketTag || "All";
+  const tags = ["All", "College", "High School", "Analytics only"];
+  let active = state.marketTag || "All";
   tags.forEach(tag => {
-    const c = el("button", "chip" + (tag === activeTag ? " on" : ""), tag);
+    const c = el("button", "chip" + (tag === active ? " on" : ""), tag);
     c.addEventListener("click", () => { state.marketTag = tag; viewMarket(); });
     chips.appendChild(c);
   });
   controls.appendChild(chips);
   controls.appendChild(el("span", "spacer"));
   const search = el("input", "search");
-  search.type = "search"; search.placeholder = "Search athletes…";
+  search.type = "search"; search.placeholder = "Search athletes or schools…";
   search.value = state.marketQuery || "";
   search.setAttribute("aria-label", "Search athletes");
   controls.appendChild(search);
   const sort = el("select", "select");
   sort.setAttribute("aria-label", "Sort by");
-  [["price", "Last trade"], ["change", "Change"], ["peak", "Career peak"], ["name", "Name"]].forEach(([v, l]) => {
+  [["price", "Last trade"], ["score", "Agora Score"], ["rank", "Recruiting rank"], ["name", "Name"]].forEach(([v, l]) => {
     const o = el("option", null, "Sort: " + l); o.value = v; sort.appendChild(o);
   });
   sort.value = state.marketSort || "price";
@@ -506,21 +491,22 @@ function viewMarket() {
   function renderTable() {
     const q = (state.marketQuery || "").toLowerCase();
     let rows = P.filter(p =>
-      (activeTag === "All" || p.tag === activeTag) &&
-      (!q || p.name.toLowerCase().includes(q)));
+      (active === "All" || (active === "Analytics only" ? p.minor
+        : active === "College" ? p.level === "College" : p.level === "High School" && !p.minor)) &&
+      (!q || p.name.toLowerCase().includes(q) || p.school.toLowerCase().includes(q)));
     const key = state.marketSort || "price";
     rows = rows.slice().sort((a, b) =>
       key === "name" ? a.name.localeCompare(b.name)
-      : key === "price" ? lastTrade(b) - lastTrade(a)
-      : b[key] - a[key]);
-
+      : key === "rank" ? a.rank - b.rank
+      : key === "score" ? b.score - a.score
+      : (b.price ? lastTrade(b) : 0) - (a.price ? lastTrade(a) : 0));
     tableWrap.replaceChildren();
     const table = el("table", "market-table");
     const thead = el("thead");
     const hr = el("tr");
-    [["", "hide-sm"], ["Athlete", ""], ["", "hide-sm"], ["Last trade", "num"], ["Fair value", "num hide-sm"],
-     ["Vs fair", "num hide-sm"], ["1-season", "num"], ["Trend", "num hide-sm"], ["Mkt cap", "num hide-sm"]].forEach(([t, cls]) => {
-      const th = el("th", cls || null, t); hr.appendChild(th);
+    [["", "hide-sm"], ["Athlete", ""], ["Token", "hide-sm"], ["Score", "num"], ["Last trade", "num"],
+     ["Fair value", "num hide-sm"], ["Vs fair", "num hide-sm"], ["Trend", "num hide-sm"]].forEach(([t, cls]) => {
+      hr.appendChild(el("th", cls || null, t));
     });
     thead.appendChild(hr);
     table.appendChild(thead);
@@ -528,38 +514,48 @@ function viewMarket() {
     rows.forEach((p, i) => {
       const tr = el("tr");
       tr.tabIndex = 0;
-      tr.setAttribute("aria-label", p.name + " " + money(p.price));
+      tr.setAttribute("aria-label", p.name);
       const open = () => { location.hash = "#/athlete/" + p.id; };
       tr.addEventListener("click", open);
       tr.addEventListener("keydown", e => { if (e.key === "Enter") open(); });
-
       tr.appendChild(el("td", "num hide-sm", String(i + 1)));
       const who = el("td");
       const w = el("div", "who");
-      w.appendChild(el("span", "avatar", initials(p.name)));
+      const av = el("span", "avatar", initials(p.name));
+      av.style.borderColor = scoreColor(p.score);
+      w.appendChild(av);
       const nm = el("div");
-      nm.appendChild(el("div", "nm", p.name));
-      nm.appendChild(el("div", "sub", p.pos + " · " + p.team + (p.approx ? " · approx data" : "")));
+      const nmRow = el("div", "nm");
+      nmRow.textContent = p.name;
+      if (p.minor) nmRow.appendChild(minorBadge());
+      nm.appendChild(nmRow);
+      nm.appendChild(el("div", "sub", p.pos + " · " + p.school + " · " + p.cls));
       w.appendChild(nm);
       who.appendChild(w);
       tr.appendChild(who);
-      const tagTd = el("td", "hide-sm");
-      tagTd.appendChild(el("span", "tag", p.tag));
-      tr.appendChild(tagTd);
-      const lt = el("td", "num");
-      lt.appendChild(el("b", null, money(lastTrade(p))));
-      tr.appendChild(lt);
-      tr.appendChild(el("td", "num hide-sm", money(fairValue(p))));
-      const pr = el("td", "num hide-sm");
-      pr.appendChild(premChip(p));
-      tr.appendChild(pr);
-      const d = el("td", "num");
-      d.appendChild(el("span", "delta " + (p.change >= 0 ? "pos" : "neg"), arrow(p.change) + " " + pct(p.change)));
-      tr.appendChild(d);
-      const sp = el("td", "num hide-sm");
-      sp.appendChild(sparkline(p.seasons));
-      tr.appendChild(sp);
-      tr.appendChild(el("td", "num hide-sm", compact(lastTrade(p) * SHARES_OUT)));
+      tr.appendChild(el("td", "num hide-sm", p.token || "—"));
+      const sc = el("td", "num");
+      const scChip = el("b", "score-chip", p.score.toFixed(0));
+      scChip.style.color = scoreColor(p.score);
+      sc.appendChild(scChip);
+      tr.appendChild(sc);
+      if (p.minor) {
+        const cell = el("td", "num");
+        cell.colSpan = 4;
+        cell.appendChild(el("span", "sub", "Analytics only — not listed"));
+        tr.appendChild(cell);
+      } else {
+        const lt = el("td", "num");
+        lt.appendChild(el("b", null, money(lastTrade(p))));
+        tr.appendChild(lt);
+        tr.appendChild(el("td", "num hide-sm", money(fairValue(p))));
+        const pr = el("td", "num hide-sm");
+        pr.appendChild(premChip(p));
+        tr.appendChild(pr);
+        const sp = el("td", "num hide-sm");
+        sp.appendChild(sparkline(p.series));
+        tr.appendChild(sp);
+      }
       tbody.appendChild(tr);
     });
     table.appendChild(tbody);
@@ -570,6 +566,7 @@ function viewMarket() {
   renderTable();
 }
 
+/* ---------- athlete profile ---------- */
 function viewAthlete(id) {
   const p = byId[id];
   if (!p) { location.hash = "#/market"; return; }
@@ -581,168 +578,406 @@ function viewAthlete(id) {
   app.appendChild(back);
 
   const head = el("div", "ath-head");
-  head.appendChild(el("span", "avatar", initials(p.name)));
+  const av = el("span", "avatar big", initials(p.name));
+  av.style.borderColor = scoreColor(p.score);
+  head.appendChild(av);
   const nameBox = el("div");
-  const h1 = el("h1", null, p.name);
-  nameBox.appendChild(h1);
+  nameBox.appendChild(el("h1", null, p.name));
   const meta = el("div", "ath-meta");
-  [p.pos + " · " + p.team, p.tag, "Listed " + p.from].forEach(t => meta.appendChild(el("span", "tag", t)));
-  if (p.approx) meta.appendChild(el("span", "tag", "approx season data"));
+  [p.pos + " · " + p.school, p.cls, p.level, "Rank #" + p.rank].forEach(t => meta.appendChild(el("span", "tag", t)));
+  if (p.token) meta.appendChild(el("span", "tag token-tag", p.token));
+  if (p.minor) meta.appendChild(minorBadge());
+  if (p.demo) meta.appendChild(demoBadge());
   nameBox.appendChild(meta);
   head.appendChild(nameBox);
   const priceBox = el("div", "ath-price");
-  priceBox.appendChild(el("div", "p", money(lastTrade(p))));
-  priceBox.appendChild(el("div", "d sub", "last traded price"));
-  const fvLine = el("div", "d fv-line");
-  fvLine.appendChild(document.createTextNode("Agora fair value " + money(fairValue(p)) + " · "));
-  fvLine.appendChild(premChip(p));
-  priceBox.appendChild(fvLine);
-  priceBox.appendChild(el("div", "d delta " + (p.change >= 0 ? "pos" : "neg"),
-    arrow(p.change) + " " + pct(p.change) + " fair value vs last season"));
+  if (p.minor) {
+    priceBox.appendChild(el("div", "p analytics", "Not listed"));
+    priceBox.appendChild(el("div", "d sub", "Under-18 safeguard: analytics only, no trading, no price."));
+  } else {
+    priceBox.appendChild(el("div", "p", money(lastTrade(p))));
+    priceBox.appendChild(el("div", "d sub", "last traded price"));
+    const fv = el("div", "d fv-line");
+    fv.appendChild(document.createTextNode("Agora fair value " + money(fairValue(p)) + " · "));
+    fv.appendChild(premChip(p));
+    priceBox.appendChild(fv);
+  }
   head.appendChild(priceBox);
   app.appendChild(head);
 
   app.appendChild(el("blockquote", "story", "“" + p.story + "”"));
 
-  // price chart
-  const chartPanel = el("section", "panel");
-  chartPanel.appendChild(el("h2", null, "Career fair-value history"));
-  chartPanel.appendChild(el("p", "sub", "The engine's suggested fair value, season by season · " + p.from + " – " + p.seasons[p.seasons.length - 1].season + " · hover or focus + arrow keys to inspect"));
-  buildChart(chartPanel, [{ name: p.name, color: "#16a34a", pts: p.series }], {
-    height: 320,
-    annotatePeak: true,
-    ariaLabel: p.name + " career price history",
-    tooltipRows: t => {
-      const season = p.seasons.reduce((a, s) => Math.abs(parseInt(s.season) + 1 - t) < Math.abs(parseInt(a.season) + 1 - t) ? s : a);
-      return {
-        title: season.season + " · " + season.team + " · age " + season.age,
-        extra: [
-          season.pts.toFixed(1) + " pts · " + season.reb.toFixed(1) + " reb · " + season.ast.toFixed(1) + " ast",
-          season.gp + " games · valuation score " + season.score.toFixed(0),
-        ],
-      };
-    },
+  // score panel: orb + radar + bars
+  const scoreGrid = el("div", "score-grid");
+  const orbPanel = el("section", "panel glass center");
+  orbPanel.appendChild(el("h2", null, "Agora Score"));
+  orbPanel.appendChild(scoreOrb(p.score, 150));
+  orbPanel.appendChild(el("p", "sub center-text", "Six weighted dimensions, 0–100. The score drives the suggested fair value."));
+  scoreGrid.appendChild(orbPanel);
+  const radarPanel = el("section", "panel glass");
+  radarPanel.appendChild(el("h2", null, "Dimension radar"));
+  radar(radarPanel, [{ name: p.name, color: scoreColor(p.score), subs: p.subs }]);
+  scoreGrid.appendChild(radarPanel);
+  const barsPanel = el("section", "panel glass");
+  barsPanel.appendChild(el("h2", null, "Score breakdown"));
+  dimensionBars(barsPanel, p.subs);
+  scoreGrid.appendChild(barsPanel);
+  app.appendChild(scoreGrid);
+
+  // stats + audience + commercial
+  const statGrid = el("div", "grid-2");
+  const stats = el("section", "panel");
+  stats.appendChild(el("h2", null, "Season line"));
+  stats.appendChild(el("p", "sub", (p.level === "College" ? "Approximate public per-game statistics, 2025-26." : "Fictional demo statistics — no real minor's data is used.")));
+  const ms = el("div", "mini-stats");
+  [["PTS", p.pts], ["REB", p.reb], ["AST", p.ast], ["TS%", (p.ts * 100).toFixed(1)], ["Games", p.gp]].forEach(([l, v]) => {
+    if (v == null) return;
+    const d = el("div", "ms", l);
+    d.prepend(el("b", null, String(v)));
+    ms.appendChild(d);
   });
-  // trade ticket — sits to the right of the chart, like an order ticket
-  const tp = el("section", "panel trade-ticket");
-  tp.appendChild(el("h2", null, "Trade"));
-  tp.appendChild(el("p", "sub", "Set your own price — the market, not the model, decides. Your trade becomes the new last-traded price."));
-  const quote = el("div", "ticket-quote");
-  quote.appendChild(el("b", null, money(lastTrade(p))));
-  quote.appendChild(el("span", "sub", "last trade · fair value " + money(fairValue(p))));
-  tp.appendChild(quote);
-  const tForm = el("div", "trade-form");
-  const mkF = (labelText, control) => {
-    const f = el("div", "field");
-    f.appendChild(el("label", null, labelText));
-    f.appendChild(control);
-    return f;
-  };
-  const priceIn = el("input", "amount");
-  priceIn.type = "number"; priceIn.min = 1; priceIn.step = 0.5;
-  priceIn.value = lastTrade(p).toFixed(2);
-  const qtyIn = el("input", "amount");
-  qtyIn.type = "number"; qtyIn.min = 0.5; qtyIn.step = 0.5; qtyIn.value = 5;
-  const totalOut = el("div", "trade-total");
-  const holding = el("p", "sub");
-  const updateMeta = () => {
-    const q = Math.max(0, Number(qtyIn.value) || 0), pr = Math.max(0, Number(priceIn.value) || 0);
-    totalOut.textContent = "Total " + money(q * pr);
-    const own = store.owned("ath", p.id);
-    holding.textContent = own.shares > 0
-      ? "You own " + own.shares.toFixed(1) + " shares · avg cost " + money(own.cost / own.shares)
-      : "You own no shares yet.";
-  };
-  const buyBtn = el("button", "btn big buy", "Buy");
-  const sellBtn = el("button", "btn big sell", "Sell");
-  const doTrade = kind => {
-    const q = Number(qtyIn.value) || 0, pr = Number(priceIn.value) || 0;
-    if (q <= 0 || pr <= 0) { toast("Enter a price and quantity"); return; }
-    if (kind === "sell" && store.owned("ath", p.id).shares < q - 1e-9) {
-      toast("You only own " + store.owned("ath", p.id).shares.toFixed(1) + " shares"); return;
+  stats.appendChild(ms);
+  statGrid.appendChild(stats);
+  const aud = el("section", "panel");
+  aud.appendChild(el("h2", null, "Audience & commercial"));
+  const ms2 = el("div", "mini-stats");
+  [["Followers", kfmt(p.followersK)], ["Engagement", p.engagement + "%"], ["90-day growth", "+" + p.growth90 + "%"],
+   ["NIL deals", String(p.nil)], ["Momentum", p.momentum + " / 100"]].forEach(([l, v]) => {
+    const d = el("div", "ms", l);
+    d.prepend(el("b", null, v));
+    ms2.appendChild(d);
+  });
+  aud.appendChild(ms2);
+  aud.appendChild(el("p", "sub", "Commercial maturity: " + p.maturity + ". Commercial values are 0–100 indexes — never dollar valuations."));
+  statGrid.appendChild(aud);
+  app.appendChild(statGrid);
+
+  // price chart + ticket (listed only)
+  if (!p.minor) {
+    const grid = el("div", "ath-grid");
+    const chartPanel = el("section", "panel");
+    chartPanel.appendChild(el("h2", null, "Fair-value history"));
+    chartPanel.appendChild(el("p", "sub", "The engine's suggested fair value across the season · hover to inspect"));
+    buildChart(chartPanel, [{ name: p.name, color: "#16a34a", pts: p.series }], {
+      height: 300, ariaLabel: p.name + " fair value history", tooltipTitle: "2025-26 season",
+    });
+    grid.appendChild(chartPanel);
+
+    const tp = el("section", "panel trade-ticket");
+    tp.appendChild(el("h2", null, "Trade " + p.token));
+    tp.appendChild(el("p", "sub", "Shares are tokens. Set any price — your trade becomes the new last trade and is recorded on the verifiable ledger."));
+    const quote = el("div", "ticket-quote");
+    quote.appendChild(el("b", null, money(lastTrade(p))));
+    quote.appendChild(el("span", "sub", "last trade · fair value " + money(fairValue(p))));
+    tp.appendChild(quote);
+    const tForm = el("div", "trade-form");
+    const mkF = (labelText, control) => {
+      const f = el("div", "field");
+      f.appendChild(el("label", null, labelText));
+      f.appendChild(control);
+      return f;
+    };
+    const priceIn = el("input", "amount");
+    priceIn.type = "number"; priceIn.min = 1; priceIn.step = 0.5;
+    priceIn.value = lastTrade(p).toFixed(2);
+    const qtyIn = el("input", "amount");
+    qtyIn.type = "number"; qtyIn.min = 0.5; qtyIn.step = 0.5; qtyIn.value = 5;
+    const totalOut = el("div", "trade-total");
+    const holding = el("p", "sub");
+    const updateMeta = () => {
+      const q = Math.max(0, Number(qtyIn.value) || 0), pr = Math.max(0, Number(priceIn.value) || 0);
+      totalOut.textContent = "Total " + money(q * pr);
+      const own = store.owned("ath", p.id);
+      holding.textContent = own.shares > 0
+        ? "You hold " + own.shares.toFixed(1) + " " + p.token + " · avg cost " + money(own.cost / own.shares)
+        : "You hold no " + p.token + " yet.";
+    };
+    const buyBtn = el("button", "btn big buy", "Buy");
+    const sellBtn = el("button", "btn big sell", "Sell");
+    const doTrade = kind => {
+      const q = Number(qtyIn.value) || 0, pr = Number(priceIn.value) || 0;
+      if (q <= 0 || pr <= 0) { toast("Enter a price and quantity"); return; }
+      if (kind === "sell" && store.owned("ath", p.id).shares < q - 1e-9) {
+        toast("You only hold " + store.owned("ath", p.id).shares.toFixed(1) + " " + p.token); return;
+      }
+      store.trade({ kind, type: "ath", id: p.id, shares: q, price: pr });
+      marketStore.setLastTrade(p.id, pr);
+      ledger.record({ type: kind.toUpperCase(), token: p.token, athlete: p.name, qty: q, price: pr })
+        .then(h => toast((kind === "buy" ? "Bought " : "Sold ") + q + " " + p.token + " at " + money(pr) + " · tx " + shortHash(h) + " ✓"));
+      buildTicker();
+      viewAthlete(p.id);
+    };
+    buyBtn.addEventListener("click", () => doTrade("buy"));
+    sellBtn.addEventListener("click", () => doTrade("sell"));
+    priceIn.addEventListener("input", updateMeta);
+    qtyIn.addEventListener("input", updateMeta);
+    tForm.appendChild(mkF("Your price ($)", priceIn));
+    tForm.appendChild(mkF("Tokens", qtyIn));
+    tForm.appendChild(totalOut);
+    const actions = el("div", "trade-actions");
+    actions.appendChild(buyBtn);
+    actions.appendChild(sellBtn);
+    tForm.appendChild(actions);
+    tp.appendChild(tForm);
+    tp.appendChild(holding);
+    updateMeta();
+    grid.appendChild(tp);
+    app.appendChild(grid);
+  } else {
+    const safe = el("section", "panel safeguard");
+    safe.appendChild(el("h2", null, "Minor athlete safeguard"));
+    safe.appendChild(el("p", null,
+      "This athlete is under 18. Agora displays analytics only: no price, no token, no trading interface. " +
+      "Listings open automatically at 18 with guardian and compliance review. All high-school data on this demo is fictional."));
+    app.appendChild(safe);
+  }
+
+  // projections
+  const proj = el("section", "panel");
+  proj.appendChild(el("h2", null, "Momentum projections"));
+  proj.appendChild(el("p", "sub", "Scenario change in the 0–100 momentum index over 12 months — illustrative model estimates, never dollar predictions."));
+  const base = (0.30 * p.subs.audience + 0.25 * p.subs.production + 0.20 * p.subs.availability +
+                0.15 * p.subs.recruiting + 0.10 * p.subs.runway) / 100 * 22;
+  const drivers = DIMS.slice().sort((a, b) => p.subs[b[0]] - p.subs[a[0]]).slice(0, 2).map(d => d[1]);
+  const projGrid = el("div", "proj-grid");
+  [["Conservative", base * 0.5, "Slower development"], ["Base", base, "Modeled trajectory"],
+   ["High-Growth", base * 1.8, "Accelerated path"]].forEach(([name, g, note]) => {
+    const c = el("div", "proj-card" + (name === "Base" ? " focus" : ""));
+    c.appendChild(el("div", "p-tag", name));
+    c.appendChild(el("b", null, "+" + g.toFixed(1) + " pts"));
+    c.appendChild(el("p", "sub", note + " · key drivers: " + drivers.join(", ")));
+    projGrid.appendChild(c);
+  });
+  proj.appendChild(projGrid);
+  proj.appendChild(el("p", "sub fine", "Projections are illustrative model estimates. They do not represent guaranteed returns, financial valuations, or predictions of any specific outcome. Not financial advice."));
+  app.appendChild(proj);
+
+  // comparables
+  const comps = P.filter(x => x.id !== p.id && x.pos === p.pos)
+    .sort((a, b) => Math.abs(a.rank - p.rank) - Math.abs(b.rank - p.rank)).slice(0, 3);
+  if (comps.length) {
+    const cp = el("section", "panel");
+    cp.appendChild(el("h2", null, "Comparable athletes"));
+    const row = el("div", "comp-row");
+    comps.forEach(c => {
+      const card = el("a", "comp-card");
+      card.href = "#/athlete/" + c.id;
+      const top = el("div", "bk-top");
+      const chip = el("b", "score-chip", c.score.toFixed(0));
+      chip.style.color = scoreColor(c.score);
+      top.appendChild(chip);
+      top.appendChild(el("span", "sub", c.minor ? "analytics only" : money(lastTrade(c))));
+      card.appendChild(top);
+      card.appendChild(el("b", null, c.name));
+      card.appendChild(el("div", "sub", c.pos + " · " + c.school + " · " + c.cls));
+      row.appendChild(card);
+    });
+    cp.appendChild(row);
+    const cta = el("div", "btn-row");
+    const b = el("button", "btn ghost", "Compare side-by-side →");
+    b.addEventListener("click", () => {
+      location.hash = "#/compare?ids=" + [p.id, ...comps.slice(0, 2).map(c => c.id)].join(",");
+    });
+    cta.appendChild(b);
+    cp.appendChild(cta);
+    app.appendChild(cp);
+  }
+}
+
+/* ---------- compare ---------- */
+const CMP_COLORS = ["#3987e5", "#9085e9", "#34d399", "#eda100"];
+function viewCompare(params) {
+  document.title = "Agora — Compare";
+  app.replaceChildren();
+  const head = el("div", "view-head");
+  head.appendChild(el("h1", null, "Compare athletes"));
+  head.appendChild(el("p", null, "Up to four athletes across all six Agora Score dimensions. Analytics-only minors can be compared — never traded."));
+  app.appendChild(head);
+
+  let ids = (params.get("ids") || "").split(",").map(Number).filter(n => byId[n]).slice(0, 4);
+  if (!ids.length) ids = [P[0].id, P[1].id];
+
+  const picker = el("section", "panel");
+  picker.appendChild(el("h2", null, "Selection"));
+  const chipRow = el("div", "chips wrap");
+  P.forEach(p => {
+    const on = ids.includes(p.id);
+    const c = el("button", "chip" + (on ? " on" : ""), p.name);
+    if (on) {
+      const idx = ids.indexOf(p.id);
+      c.style.borderColor = CMP_COLORS[idx];
+      c.style.color = CMP_COLORS[idx];
     }
-    store.trade({ kind, type: "ath", id: p.id, shares: q, price: pr });
-    marketStore.setLastTrade(p.id, pr);
-    buildTicker();
-    toast((kind === "buy" ? "Bought " : "Sold ") + q + " shares of " + p.name + " at " + money(pr));
-    viewAthlete(p.id);
-  };
-  buyBtn.addEventListener("click", () => doTrade("buy"));
-  sellBtn.addEventListener("click", () => doTrade("sell"));
-  priceIn.addEventListener("input", updateMeta);
-  qtyIn.addEventListener("input", updateMeta);
-  tForm.appendChild(mkF("Your price ($)", priceIn));
-  tForm.appendChild(mkF("Shares", qtyIn));
-  tForm.appendChild(totalOut);
-  const actions = el("div", "trade-actions");
-  actions.appendChild(buyBtn);
-  actions.appendChild(sellBtn);
-  tForm.appendChild(actions);
-  tp.appendChild(tForm);
-  tp.appendChild(holding);
-  updateMeta();
-
-  const athGrid = el("div", "ath-grid");
-  athGrid.appendChild(chartPanel);
-  athGrid.appendChild(tp);
-  app.appendChild(athGrid);
-
-  // valuation breakdown
-  const last = p.seasons[p.seasons.length - 1];
-  const bd = el("section", "panel");
-  bd.appendChild(el("h2", null, "Why this fair value — the engine's suggested price"));
-  bd.appendChild(el("p", "sub", "Latest season (" + last.season + ") through the engine: production × age runway × availability → " + money(last.price) + ". Agora suggests the fair value; buyers and sellers set the traded price."));
-  const grid = el("div", "breakdown");
-  [
-    ["Production score", last.score, 100, last.score.toFixed(0) + " / 100"],
-    ["Age runway ×" + last.ageF.toFixed(2), last.ageF, 1.06, "age " + last.age],
-    ["Availability ×" + last.avail.toFixed(2), last.avail, 1, last.gp + " games played"],
-  ].forEach(([label, v, max, note]) => {
-    const row = el("div", "meter-row");
-    const lab = el("div", "m-label");
-    lab.appendChild(el("span", null, label));
-    lab.appendChild(el("b", null, note));
-    row.appendChild(lab);
-    const m = el("div", "meter");
-    const fill = el("i");
-    fill.style.width = Math.min(100, (v / max) * 100).toFixed(1) + "%";
-    m.appendChild(fill);
-    row.appendChild(m);
-    grid.appendChild(row);
+    c.addEventListener("click", () => {
+      const next = on ? ids.filter(x => x !== p.id) : [...ids, p.id].slice(-4);
+      location.hash = "#/compare?ids=" + next.join(",");
+    });
+    chipRow.appendChild(c);
   });
-  bd.appendChild(grid);
-  const btnRow = el("div", "btn-row");
-  const tmBtn = el("button", "btn ghost", "▸ Open in Time Machine");
-  tmBtn.addEventListener("click", () => {
-    location.hash = "#/machine?id=" + p.id + "&season=" + encodeURIComponent(p.seasons[0].season) + "&amt=1000";
-  });
-  btnRow.appendChild(tmBtn);
-  bd.appendChild(btnRow);
-  app.appendChild(bd);
+  picker.appendChild(chipRow);
+  app.appendChild(picker);
 
-  // seasons table
-  const st = el("section", "panel");
-  st.appendChild(el("h2", null, "Season by season"));
-  st.appendChild(el("p", "sub", "Real per-game statistics" + (p.approx ? " (approximated for this athlete)" : " from stats.nba.com") + " — the table behind every chart value."));
-  const wrap = el("div", "season-wrap");
-  const table = el("table", "seasons");
+  const sel = ids.map(id => byId[id]);
+  const grid = el("div", "grid-2");
+  const radarPanel = el("section", "panel glass");
+  radarPanel.appendChild(el("h2", null, "Dimension radar"));
+  radar(radarPanel, sel.map((p, i) => ({ name: p.name, color: CMP_COLORS[i], subs: p.subs })));
+  const legend = el("div", "chart-legend");
+  sel.forEach((p, i) => {
+    const k = el("span", "lg-key");
+    const sw = el("i"); sw.style.borderTopColor = CMP_COLORS[i];
+    k.appendChild(sw);
+    k.appendChild(document.createTextNode(p.name));
+    legend.appendChild(k);
+  });
+  radarPanel.appendChild(legend);
+  grid.appendChild(radarPanel);
+
+  const tablePanel = el("section", "panel table-scroll");
+  tablePanel.appendChild(el("h2", null, "Metric by metric"));
+  const table = el("table", "cmp-table");
   const thead = el("thead");
   const hr = el("tr");
-  ["Season", "Team", "Age", "GP", "MIN", "PTS", "REB", "AST", "STL", "BLK", "TOV", "TS%", "Score", "Price"].forEach(h => hr.appendChild(el("th", null, h)));
+  hr.appendChild(el("th", null, ""));
+  sel.forEach((p, i) => {
+    const th = el("th", "num");
+    const b = el("b", null, p.name.split(" ").pop());
+    b.style.color = CMP_COLORS[i];
+    th.appendChild(b);
+    hr.appendChild(th);
+  });
   thead.appendChild(hr);
   table.appendChild(thead);
   const tb = el("tbody");
-  p.seasons.slice().reverse().forEach(s => {
+  const rows = [
+    ["Agora Score", p => p.score, v => v.toFixed(1), false],
+    ...DIMS.map(([k, label]) => [label, p => p.subs[k], v => v.toFixed(0), false]),
+    ["Recruiting rank", p => p.rank, v => "#" + v, true],
+    ["Followers", p => p.followersK, v => kfmt(v), false],
+    ["Last trade", p => (p.minor ? null : lastTrade(p)), v => (v == null ? "analytics only" : money(v)), false],
+  ];
+  rows.forEach(([label, get, fmt, lowerBetter]) => {
     const tr = el("tr");
-    [s.season, s.team, s.age, s.gp, s.min.toFixed(1), s.pts.toFixed(1), s.reb.toFixed(1),
-     s.ast.toFixed(1), s.stl.toFixed(1), s.blk.toFixed(1), s.tov.toFixed(1),
-     (s.ts * 100).toFixed(1), s.score.toFixed(0), money(s.price)].forEach(v => tr.appendChild(el("td", null, String(v))));
+    tr.appendChild(el("td", null, label));
+    const vals = sel.map(get);
+    const valid = vals.filter(v => v != null);
+    const best = valid.length ? (lowerBetter ? Math.min(...valid) : Math.max(...valid)) : null;
+    vals.forEach((v, i) => {
+      const td = el("td", "num");
+      const isBest = v != null && v === best && valid.length > 1;
+      const span = el("span", isBest ? "best" : null, fmt(v) + (isBest ? " ▲" : ""));
+      if (isBest) span.style.color = CMP_COLORS[i];
+      td.appendChild(span);
+      tr.appendChild(td);
+    });
     tb.appendChild(tr);
   });
   table.appendChild(tb);
-  wrap.appendChild(table);
-  st.appendChild(wrap);
-  app.appendChild(st);
+  tablePanel.appendChild(table);
+  tablePanel.appendChild(el("p", "sub fine", "Comparison metrics are illustrative estimates. Not financial advice."));
+  grid.appendChild(tablePanel);
+  app.appendChild(grid);
+}
+
+/* ---------- methodology ---------- */
+function viewMethodology() {
+  document.title = "Agora — Methodology";
+  app.replaceChildren();
+  const head = el("div", "view-head");
+  head.appendChild(el("h1", null, "How the Agora Score works"));
+  head.appendChild(el("p", null,
+    "Six dimensions, each scored 0–100 from observable data, combined with transparent weights. " +
+    "The score feeds the fair-value curve: only score above replacement level earns a price, convexly. " +
+    "Drag the weights — every score and the live board re-rank instantly."));
+  app.appendChild(head);
+
+  const DESCS = {
+    production: "Per-game output normalized within position archetypes. HS stats are discounted for level of competition.",
+    availability: "Games played as a share of the season — reliability is investable.",
+    recruiting: "National composite rank and rating — the market consensus prior.",
+    audience: "Followers, engagement rate, and 90-day growth — commercial reach.",
+    commercial: "Verified NIL activity count and a 0–100 momentum index. Never dollar amounts.",
+    runway: "Development years remaining before peak — youth is optionality.",
+  };
+  const weights = { ...(state.simWeights || W_DEFAULT) };
+  const panel = el("section", "panel glass");
+  panel.appendChild(el("h2", null, "Weight simulator"));
+  const totalLine = el("p", "sub");
+  panel.appendChild(totalLine);
+  const sliders = el("div", "wsliders");
+  const inputs = {};
+  DIMS.forEach(([k, label]) => {
+    const row = el("div", "wslider");
+    const lab = el("div", "m-label");
+    const valSpan = el("b", null, Math.round(weights[k] * 100) + "%");
+    lab.appendChild(el("span", null, label));
+    lab.appendChild(valSpan);
+    row.appendChild(lab);
+    const input = el("input");
+    input.type = "range"; input.min = 0; input.max = 60; input.step = 5;
+    input.value = Math.round(weights[k] * 100);
+    input.setAttribute("aria-label", label + " weight");
+    input.addEventListener("input", () => {
+      weights[k] = Number(input.value) / 100;
+      valSpan.textContent = input.value + "%";
+      recompute();
+    });
+    row.appendChild(input);
+    row.appendChild(el("p", "sub", DESCS[k]));
+    sliders.appendChild(row);
+    inputs[k] = input;
+  });
+  panel.appendChild(sliders);
+  const btnRow = el("div", "btn-row");
+  const reset = el("button", "btn ghost", "Reset to defaults");
+  reset.addEventListener("click", () => {
+    DIMS.forEach(([k]) => {
+      weights[k] = W_DEFAULT[k];
+      inputs[k].value = Math.round(W_DEFAULT[k] * 100);
+    });
+    recompute();
+    viewMethodology();
+  });
+  btnRow.appendChild(reset);
+  panel.appendChild(btnRow);
+  app.appendChild(panel);
+
+  const board = el("section", "panel");
+  board.appendChild(el("h2", null, "Live board under your weights"));
+  const list = el("div");
+  board.appendChild(list);
+  app.appendChild(board);
+
+  function customScore(p) {
+    const total = DIMS.reduce((a, [k]) => a + weights[k], 0) || 1;
+    return DIMS.reduce((a, [k]) => a + p.subs[k] * weights[k], 0) / total;
+  }
+  function recompute() {
+    state.simWeights = { ...weights };
+    const total = Math.round(DIMS.reduce((a, [k]) => a + weights[k], 0) * 100);
+    totalLine.textContent = "Weights total " + total + "%" +
+      (total === 100 ? " — balanced." : " — scores normalize to your total automatically.");
+    list.replaceChildren();
+    P.slice().map(p => ({ p, s: customScore(p) })).sort((a, b) => b.s - a.s).slice(0, 10)
+      .forEach(({ p, s }, i) => {
+        const row = el("div", "sim-row");
+        row.appendChild(el("span", "sub", "#" + (i + 1)));
+        row.appendChild(el("b", null, p.name));
+        const bar = el("div", "meter grow");
+        const fill = el("i");
+        fill.style.width = s.toFixed(1) + "%";
+        fill.style.background = scoreColor(s);
+        bar.appendChild(fill);
+        row.appendChild(bar);
+        const chip = el("b", "score-chip", s.toFixed(1));
+        chip.style.color = scoreColor(s);
+        row.appendChild(chip);
+        row.appendChild(el("span", "sub delta-note",
+          (s - p.score >= 0.05 ? "+" : s - p.score <= -0.05 ? "−" : "±") + Math.abs(s - p.score).toFixed(1) + " vs default"));
+        list.appendChild(row);
+      });
+  }
+  recompute();
 }
 
 /* ---------- baskets ---------- */
@@ -752,11 +987,9 @@ function viewBaskets() {
   const head = el("div", "view-head");
   head.appendChild(el("h1", null, "Baskets"));
   head.appendChild(el("p", null,
-    "Index funds for athletes: ETF-style units you buy and sell like any share, priced as the equal-weight average of their members' last trades. " +
-    "Exactly like the deck says — invest by school (Duke, Kentucky), by draft class (2018, 2020, the projected 2026 college class), " +
-    "by position, or by theme. College prospects are live listings on this board."));
+    "Index funds for athletes: ETF-style units priced as the equal-weight average of member last trades. " +
+    "Invest by school, class, position, or level — one injury never sinks the unit. Minors are never included."));
   app.appendChild(head);
-
   const groups = [...new Set(BASKETS.map(b => b.group))];
   groups.forEach(g => {
     const section = el("section");
@@ -766,7 +999,7 @@ function viewBaskets() {
     const row = el("div", "baskets");
     BASKETS.filter(b => b.group === g && basketMembers(b).length >= 2).forEach(b => {
       const members = basketMembers(b);
-      const card = el("div", "basket panel");
+      const card = el("div", "basket panel glass");
       const top = el("div", "bk-top");
       top.appendChild(el("span", "tag", b.key));
       top.appendChild(el("span", "sub", members.length + " athletes"));
@@ -775,30 +1008,33 @@ function viewBaskets() {
       card.appendChild(el("p", "sub", b.desc));
       const priceRow = el("div", "bk-price");
       priceRow.appendChild(el("b", null, money(basketPrice(b))));
-      const ch = basketChange(b);
-      priceRow.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
+      const pr = (basketPrice(b) / basketFair(b) - 1) * 100;
+      priceRow.appendChild(el("span", "delta " + (pr >= 0 ? "pos" : "neg"), arrow(pr) + " " + pct(pr) + " vs fair"));
       card.appendChild(priceRow);
-      card.appendChild(el("div", "sub", "Fair value " + money(basketFair(b)) + " per unit"));
       const names = members.map(p => p.name.split(" ").pop());
       card.appendChild(el("p", "sub bk-members",
         names.slice(0, 6).join(" · ") + (names.length > 6 ? " · +" + (names.length - 6) + " more" : "")));
       const own = store.owned("basket", b.key);
       const ownLine = el("p", "sub bk-owned");
-      if (own.shares > 0) ownLine.textContent = "You own " + own.shares.toFixed(1) + " units · avg cost " + money(own.cost / own.shares);
+      if (own.shares > 0) ownLine.textContent = "You hold " + own.shares.toFixed(1) + " units · avg cost " + money(own.cost / own.shares);
       card.appendChild(ownLine);
       const br = el("div", "btn-row");
       const buy = el("button", "btn small", "Buy 1 unit · " + money(basketPrice(b)));
       buy.addEventListener("click", () => {
-        store.trade({ kind: "buy", type: "basket", id: b.key, shares: 1, price: basketPrice(b) });
-        toast("Bought 1 unit of " + b.name + " at " + money(basketPrice(b)));
+        const pr2 = basketPrice(b);
+        store.trade({ kind: "buy", type: "basket", id: b.key, shares: 1, price: pr2 });
+        ledger.record({ type: "BUY", token: "BSK:" + b.key, athlete: b.name, qty: 1, price: +pr2.toFixed(2) })
+          .then(h => toast("Bought 1 " + b.name + " unit · tx " + shortHash(h) + " ✓"));
         viewBaskets();
       });
       br.appendChild(buy);
       if (own.shares > 0) {
         const sell = el("button", "btn small ghost", "Sell 1");
         sell.addEventListener("click", () => {
-          store.trade({ kind: "sell", type: "basket", id: b.key, shares: Math.min(1, own.shares), price: basketPrice(b) });
-          toast("Sold 1 unit of " + b.name + " at " + money(basketPrice(b)));
+          const pr2 = basketPrice(b);
+          store.trade({ kind: "sell", type: "basket", id: b.key, shares: Math.min(1, own.shares), price: pr2 });
+          ledger.record({ type: "SELL", token: "BSK:" + b.key, athlete: b.name, qty: 1, price: +pr2.toFixed(2) })
+            .then(h => toast("Sold 1 " + b.name + " unit · tx " + shortHash(h) + " ✓"));
           viewBaskets();
         });
         br.appendChild(sell);
@@ -809,196 +1045,34 @@ function viewBaskets() {
     section.appendChild(row);
     app.appendChild(section);
   });
-
-  const note = el("p", "sub bk-note",
-    "Basket units are marked to the live average of member prices — one athlete's injury or slump doesn't sink your investment.");
-  app.appendChild(note);
-}
-
-/* ---------- time machine ---------- */
-function simulate(p, seasonLabel, amt) {
-  const idx = p.seasons.findIndex(s => s.season === seasonLabel);
-  if (idx < 0) return null;
-  const entry = p.seasons[idx];
-  const shares = amt / entry.price;
-  const tEntry = parseInt(entry.season) + 0.85;
-  const path = p.series.filter(pt => pt[0] >= tEntry - 0.02);
-  const value = path.map(pt => [pt[0], shares * pt[1]]);
-  const spx0 = spxLevel(tEntry);
-  const spx = path.map(pt => [pt[0], amt * spxLevel(pt[0]) / spx0]);
-  const exit = value[value.length - 1][1];
-  const years = Math.max(0.5, value[value.length - 1][0] - tEntry);
-  const cagr = (Math.pow(exit / amt, 1 / years) - 1) * 100;
-  let peakV = -Infinity, dd = 0, peakT = tEntry;
-  value.forEach(([t, v]) => {
-    if (v > peakV) { peakV = v; peakT = t; }
-    dd = Math.min(dd, (v - peakV) / peakV * 100);
-  });
-  const peakSeason = p.seasons.reduce((a, s) => Math.abs(parseInt(s.season) + 1 - peakT) < Math.abs(parseInt(a.season) + 1 - peakT) ? s : a);
-  return { entry, shares, value, spx, exit, years, cagr, dd, peakV, peakSeason,
-           total: (exit / amt - 1) * 100, spxEnd: spx[spx.length - 1][1] };
-}
-
-function narrative(p, sim, amt) {
-  const e = sim.entry;
-  const bought = `You bought ${money(amt)} of ${p.name} in ${e.season} — age ${e.age}, ` +
-    `${e.pts.toFixed(1)} points a game, priced at ${money(e.price)} a share.`;
-  if (sim.total >= 60)
-    return bought + ` The market re-rated him season after season; your stake peaked at ${money(sim.peakV)} around ${sim.peakSeason.season} and is worth ${money(sim.exit)} today. Early conviction in people compounds.`;
-  if (sim.total >= 0)
-    return bought + ` A respectable hold: peaks near ${money(sim.peakV)} in ${sim.peakSeason.season}, some drawdowns, and ${money(sim.exit)} today. Athlete assets reward timing the age curve, not just the name.`;
-  return bought + ` It peaked at ${money(sim.peakV)} in ${sim.peakSeason.season} — then age and availability repriced the asset to ${money(sim.exit)}. This is why the age curve and injury risk are priced into every Agora valuation, and why diversified athlete baskets exist.`;
-}
-
-function viewMachine(params) {
-  document.title = "Agora — Time Machine";
-  app.replaceChildren();
-  const head = el("div", "view-head");
-  head.appendChild(el("h1", null, "Time Machine"));
-  head.appendChild(el("p", null, "Pick an athlete, a season, and a stake — see what the market would have done to your money." + (SHOW_SPX ? " Benchmarked against the S&P 500 over the identical window." : "")));
-  app.appendChild(head);
-
-  const panel = el("section", "panel");
-  const controls = el("div", "tm-controls");
-
-  const mkField = (labelText, control) => {
-    const f = el("div", "field");
-    const lb = el("label", null, labelText);
-    f.appendChild(lb);
-    f.appendChild(control);
-    return f;
-  };
-
-  const selAth = el("select", "select");
-  P.slice().sort((a, b) => a.name.localeCompare(b.name)).forEach(p => {
-    const o = el("option", null, p.name); o.value = p.id; selAth.appendChild(o);
-  });
-  const selSeason = el("select", "select");
-  const amtIn = el("input", "amount");
-  amtIn.type = "number"; amtIn.min = 100; amtIn.step = 100; amtIn.value = params.get("amt") || 1000;
-  const goBtn = el("button", "btn", "Run simulation");
-
-  controls.appendChild(mkField("Athlete", selAth));
-  controls.appendChild(mkField("Buy in season", selSeason));
-  controls.appendChild(mkField("Amount ($)", amtIn));
-  controls.appendChild(goBtn);
-  panel.appendChild(controls);
-  app.appendChild(panel);
-
-  const result = el("section", "panel");
-  app.appendChild(result);
-
-  function fillSeasons(p, keep) {
-    selSeason.replaceChildren();
-    p.seasons.slice(0, -1).forEach(s => {
-      const o = el("option", null, s.season + " · age " + s.age + " · " + money(s.price));
-      o.value = s.season;
-      selSeason.appendChild(o);
-    });
-    if (keep && [...selSeason.options].some(o => o.value === keep)) selSeason.value = keep;
-  }
-
-  function run() {
-    const p = byId[selAth.value];
-    const amt = Math.max(100, Number(amtIn.value) || 1000);
-    const sim = simulate(p, selSeason.value, amt);
-    if (!sim) return;
-    result.replaceChildren();
-
-    result.appendChild(el("p", "sub", money(amt) + " invested in " + p.name + " · " + sim.entry.season + " → today"));
-    result.appendChild(el("div", "hero-num", money(sim.exit)));
-    const sub = el("p", "hero-sub");
-    const tot = el("span", sim.total >= 0 ? "pos" : "neg", arrow(sim.total) + " " + pct(sim.total, 0));
-    sub.appendChild(tot);
-    sub.appendChild(document.createTextNode(" total return over " + sim.years.toFixed(1) + " years"));
-    result.appendChild(sub);
-
-    const ms = el("div", "mini-stats");
-    [
-      ["CAGR", pct(sim.cagr, 1)],
-      ["Peak value", money(sim.peakV)],
-      ["Max drawdown", sim.dd.toFixed(0) + "%"],
-      ...(SHOW_SPX ? [["Same $ in S&P 500", money(sim.spxEnd)]] : []),
-      ["Shares held", sim.shares.toFixed(1)],
-    ].forEach(([l, v]) => {
-      const d = el("div", "ms", l);
-      d.prepend(el("b", null, v));
-      ms.appendChild(d);
-    });
-    result.appendChild(ms);
-    result.appendChild(el("hr")).style.cssText = "border:none;border-top:1px solid var(--hairline);margin:18px 0";
-
-    buildChart(result, [
-      { name: p.name + " stake", color: "#16a34a", pts: sim.value },
-      ...(SHOW_SPX ? [{ name: "S&P 500", color: "#3987e5", pts: sim.spx }] : []),
-    ], {
-      height: 300, legend: SHOW_SPX, endLabels: SHOW_SPX, zeroBase: true,
-      ariaLabel: SHOW_SPX ? "Investment value versus S&P 500" : "Investment value over time",
-      tooltipRows: t => ({ title: (Math.floor(t)) + "–" + (Math.floor(t) + 1 + "").slice(2) + " season window" }),
-    });
-
-    result.appendChild(el("p", "narrative", narrative(p, sim, amt)));
-
-    const btnRow = el("div", "btn-row");
-    const add = el("button", "btn ghost", "+ Add this trade to portfolio");
-    add.addEventListener("click", () => {
-      store.trade({ kind: "buy", type: "ath", id: p.id, shares: +sim.shares.toFixed(4),
-                    price: sim.entry.price, season: sim.entry.season });
-      toast("Added: " + money(amt) + " of " + p.name + " @ " + sim.entry.season);
-    });
-    btnRow.appendChild(add);
-    result.appendChild(btnRow);
-  }
-
-  selAth.addEventListener("change", () => { fillSeasons(byId[selAth.value]); run(); });
-  selSeason.addEventListener("change", run);
-  amtIn.addEventListener("change", run);
-  goBtn.addEventListener("click", run);
-
-  // defaults: deep link or the Jokic story
-  const initId = params.get("id") || 203999;
-  selAth.value = String(byId[initId] ? initId : P[0].id);
-  fillSeasons(byId[selAth.value], params.get("season") || "2015-16");
-  run();
 }
 
 /* ---------- portfolio ---------- */
-function priceAtOrAfter(p, seasonLabel) {
-  const i = p.seasons.findIndex(s => s.season === seasonLabel);
-  return i >= 0 ? p.seasons[i].price : p.seasons[0].price;
-}
 function viewPortfolio() {
   document.title = "Agora — Portfolio";
   app.replaceChildren();
   const head = el("div", "view-head");
   head.appendChild(el("h1", null, "Your portfolio"));
-  head.appendChild(el("p", null, "A ledger of your trades, marked to the last traded price. Returns come two ways: the value of your shares as the brand grows, and — on the roadmap — dividend-style payouts from the athlete's actual brand income."));
+  head.appendChild(el("p", null, "Token holdings marked to the last traded price. Every entry settles on the verifiable ledger."));
   app.appendChild(head);
-
   const { list, realized } = store.positions();
   if (!list.length) {
     const emp = el("div", "empty");
-    emp.appendChild(el("p", null, "No positions yet. Buy an athlete at any price you like, or grab an index basket on the market page."));
+    emp.appendChild(el("p", null, "No holdings yet. Buy an athlete's token at any price, or grab an index basket."));
+    const row = el("div", "btn-row");
     const b = el("button", "btn", "Open the market");
     b.addEventListener("click", () => { location.hash = "#/market"; });
-    const b2 = el("button", "btn ghost", "Open the Time Machine");
-    b2.addEventListener("click", () => { location.hash = "#/machine"; });
-    const row = el("div", "btn-row");
-    row.appendChild(b); row.appendChild(b2);
+    row.appendChild(b);
     emp.appendChild(row);
     app.appendChild(emp);
     return;
   }
-
   const rows = list.map(pos => {
     const isBasket = pos.type === "basket";
     const asset = isBasket ? byBasket[pos.id] : byId[pos.id];
     const mark = isBasket ? basketPrice(asset) : lastTrade(asset);
-    const value = pos.shares * mark;
-    const avg = pos.cost / pos.shares;
-    return { pos, isBasket, asset, mark, value, avg };
+    return { pos, isBasket, asset, mark, value: pos.shares * mark, avg: pos.cost / pos.shares };
   }).filter(r => r.asset);
-
   const totalIn = rows.reduce((a, r) => a + r.pos.cost, 0);
   const totalNow = rows.reduce((a, r) => a + r.value, 0);
   const tiles = el("div", "tiles");
@@ -1014,12 +1088,11 @@ function viewPortfolio() {
     tiles.appendChild(t);
   });
   app.appendChild(tiles);
-
-  const panel = el("section", "panel");
+  const panel = el("section", "panel table-scroll");
   const table = el("table", "pos-table");
   const thead = el("thead");
   const hr = el("tr");
-  ["Asset", "Shares", "Avg cost", "Last trade", "Value", "P/L", ""].forEach(h => hr.appendChild(el("th", null, h)));
+  ["Asset", "Token", "Held", "Avg cost", "Last trade", "Value", "P/L", ""].forEach(h => hr.appendChild(el("th", null, h)));
   thead.appendChild(hr);
   table.appendChild(thead);
   const tb = el("tbody");
@@ -1027,10 +1100,8 @@ function viewPortfolio() {
     const tr = el("tr");
     const nameTd = el("td");
     if (r.isBasket) {
-      const w = el("div");
-      w.appendChild(el("b", null, r.asset.name));
-      w.appendChild(el("div", "sub", "index basket · " + basketMembers(r.asset).length + " athletes"));
-      nameTd.appendChild(w);
+      nameTd.appendChild(el("b", null, r.asset.name));
+      nameTd.appendChild(el("div", "sub", "index basket · " + basketMembers(r.asset).length + " athletes"));
     } else {
       const a = el("a", null, r.asset.name);
       a.href = "#/athlete/" + r.asset.id;
@@ -1039,6 +1110,7 @@ function viewPortfolio() {
       nameTd.appendChild(a);
     }
     tr.appendChild(nameTd);
+    tr.appendChild(el("td", null, r.isBasket ? "BSK:" + r.asset.key : r.asset.token));
     tr.appendChild(el("td", null, r.pos.shares.toFixed(1)));
     tr.appendChild(el("td", null, money(r.avg)));
     tr.appendChild(el("td", null, money(r.mark)));
@@ -1051,8 +1123,10 @@ function viewPortfolio() {
     if (r.isBasket) {
       const sell = el("button", "x-btn", "Sell 1");
       sell.addEventListener("click", () => {
-        store.trade({ kind: "sell", type: "basket", id: r.asset.key, shares: Math.min(1, r.pos.shares), price: basketPrice(r.asset) });
-        toast("Sold 1 unit of " + r.asset.name + " at " + money(basketPrice(r.asset)));
+        const pr2 = basketPrice(r.asset);
+        store.trade({ kind: "sell", type: "basket", id: r.asset.key, shares: Math.min(1, r.pos.shares), price: pr2 });
+        ledger.record({ type: "SELL", token: "BSK:" + r.asset.key, athlete: r.asset.name, qty: 1, price: +pr2.toFixed(2) })
+          .then(h => toast("Sold 1 unit · tx " + shortHash(h) + " ✓"));
         viewPortfolio();
       });
       actTd.appendChild(sell);
@@ -1067,104 +1141,115 @@ function viewPortfolio() {
   table.appendChild(tb);
   panel.appendChild(table);
   const clr = el("div", "btn-row");
+  const lg = el("button", "btn ghost", "View settlement ledger");
+  lg.addEventListener("click", () => { location.hash = "#/ledger"; });
   const cb = el("button", "btn ghost", "Clear portfolio");
   cb.addEventListener("click", () => { store.clear(); viewPortfolio(); });
+  clr.appendChild(lg);
   clr.appendChild(cb);
   panel.appendChild(clr);
   app.appendChild(panel);
 }
 
-/* ---------- list with agora ---------- */
-function viewList() {
-  document.title = "Agora — List with Agora";
+/* ---------- ledger ---------- */
+function viewLedger() {
+  document.title = "Agora — Ledger";
   app.replaceChildren();
   const head = el("div", "view-head");
-  head.appendChild(el("h1", null, "List with Agora"));
-  head.appendChild(el("p", null, "Athletes sell a regulated minority share of their commercial brand entity — never themselves — for capital that funds coaching, travel, and content when it matters most."));
+  head.appendChild(el("h1", null, "Settlement ledger"));
+  head.appendChild(el("p", null,
+    "Every trade is a token transfer appended to a hash-chained ledger: each block carries the SHA-256 of the previous, " +
+    "so any tampering breaks the chain. This demo runs the ledger locally in your browser; the production architecture " +
+    "settles the same structure on a public network."));
   app.appendChild(head);
 
-  const grid = el("div", "grid-2");
+  const panel = el("section", "panel glass");
+  const statRow = el("div", "mini-stats");
+  panel.appendChild(statRow);
+  const btnRow = el("div", "btn-row");
+  const verifyBtn = el("button", "btn", "Verify chain integrity");
+  const status = el("span", "verify-status");
+  btnRow.appendChild(verifyBtn);
+  btnRow.appendChild(status);
+  panel.appendChild(btnRow);
+  app.appendChild(panel);
 
-  const left = el("section", "panel");
-  left.appendChild(el("h2", null, "IPO pipeline"));
-  left.appendChild(el("p", "sub", "Illustrative examples of the athlete side of the market (not real listings)"));
-  const pros = el("div", "prospects");
-  [
-    ["NIL · Basketball", "Point guard, Pac-12 sophomore", "Projected lottery pick. Raising against future brand income to fund elite training staff.", "$120K for 8%"],
-    ["NIL · Football", "QB, SEC freshman phenom", "Top-3 jersey sales in conference. Capital for family relocation and media team.", "$250K for 6%"],
-    ["Pro · Tennis", "ATP #214, age 19", "Two challenger titles. Funding a full travel season — the gap Agora exists to close.", "$60K for 10%"],
-  ].forEach(([tag, name, blurb, ask]) => {
-    const c = el("div", "prospect");
-    c.appendChild(el("div", "p-tag", tag));
-    c.appendChild(el("h3", null, name));
-    c.appendChild(el("p", null, blurb));
-    const a = el("div", "p-ask");
-    a.appendChild(document.createTextNode("Seeking "));
-    a.appendChild(el("b", null, ask));
-    c.appendChild(a);
-    pros.appendChild(c);
+  const blocksPanel = el("section", "panel");
+  blocksPanel.appendChild(el("h2", null, "Blocks"));
+  const blockList = el("div");
+  blocksPanel.appendChild(blockList);
+  app.appendChild(blocksPanel);
+
+  async function render() {
+    const chain = await ledger.ensureGenesis();
+    const txCount = chain.reduce((a, b) => a + b.txs.filter(t => t.type !== "GENESIS").length, 0);
+    statRow.replaceChildren();
+    [["Blocks", String(chain.length)], ["Transactions", String(txCount)],
+     ["Hash", "SHA-256"], ["Chain head", shortHash(chain[chain.length - 1].hash)]].forEach(([l, v]) => {
+      const d = el("div", "ms", l);
+      d.prepend(el("b", null, v));
+      statRow.appendChild(d);
+    });
+    blockList.replaceChildren();
+    chain.slice().reverse().forEach(b => {
+      const card = el("div", "block-card");
+      const top = el("div", "bk-top");
+      top.appendChild(el("b", null, "Block " + b.i));
+      top.appendChild(el("span", "sub mono", shortHash(b.hash)));
+      card.appendChild(top);
+      card.appendChild(el("div", "sub mono", "prev " + shortHash(b.prev)));
+      b.txs.forEach(t => {
+        if (t.type === "GENESIS") {
+          card.appendChild(el("p", "sub", "⛓ " + t.note));
+        } else {
+          const line = el("p", "tx-line");
+          const side = el("b", t.type === "BUY" ? "pos" : "neg", t.type);
+          line.appendChild(side);
+          line.appendChild(document.createTextNode(" " + t.qty + " × " + t.token + " (" + t.athlete + ") @ " + money(t.price)));
+          card.appendChild(line);
+        }
+      });
+      card.appendChild(el("div", "sub fine", new Date(b.ts).toLocaleString()));
+      blockList.appendChild(card);
+    });
+  }
+  verifyBtn.addEventListener("click", async () => {
+    status.textContent = "verifying…";
+    status.className = "verify-status";
+    const t0 = performance.now();
+    const res = await ledger.verify();
+    const ms = (performance.now() - t0).toFixed(0);
+    if (res.ok) {
+      status.textContent = "✓ chain valid — " + res.blocks + " blocks re-hashed in " + ms + "ms";
+      status.className = "verify-status ok";
+    } else {
+      status.textContent = "✗ chain broken at block " + res.at + " (" + res.reason + ")";
+      status.className = "verify-status bad";
+    }
   });
-  left.appendChild(pros);
+  render();
+}
 
-  const form = el("form");
-  form.style.marginTop = "18px";
-  form.appendChild(el("h2", null, "Apply to list"));
-  form.appendChild(el("p", "sub", "Demo form — nothing is stored or sent"));
-  const fg = el("div", "form-grid");
-  const mk = (ph, full, type = "text") => {
-    const i = el("input", "search" + (full ? " full" : ""));
-    i.placeholder = ph; i.type = type; i.required = true;
-    i.setAttribute("aria-label", ph);
-    fg.appendChild(i);
-    return i;
-  };
-  mk("Full name");
-  mk("Sport & position");
-  mk("School / team", false);
-  mk("Social following (total)", false, "number");
-  mk("What would the capital unlock?", true);
-  form.appendChild(fg);
-  const fr = el("div", "btn-row");
-  const sub = el("button", "btn", "Submit application");
-  sub.type = "submit";
-  fr.appendChild(sub);
-  form.appendChild(fr);
-  form.addEventListener("submit", e => {
-    e.preventDefault();
-    toast("Application received — an Agora analyst will reach out (demo)");
-    form.reset();
+/* ---------- disclosures ---------- */
+function viewDisclosures() {
+  document.title = "Agora — Disclosures";
+  app.replaceChildren();
+  const head = el("div", "view-head");
+  head.appendChild(el("h1", null, "Disclosures"));
+  app.appendChild(head);
+  const panel = el("section", "panel");
+  [["Educational simulation", "Agora is a student project demo. Nothing here is a security, an offer, an investment product, or investment advice. All trading is simulated with fictional dollars in your browser."],
+   ["No athlete ownership", "No user owns any athlete, their income, or their name, image, and likeness. Tokens on this demo represent simulated units only."],
+   ["High-school data is fictional", "Every high-school athlete on this platform is invented. No real minor's identity, statistics, or commercial data appears anywhere."],
+   ["Minor safeguards", "Athletes under 18 are analytics-only: no price, no token, no trading interface — enforced in the data model, not just the UI."],
+   ["College data", "College athletes are real public figures shown with approximate public season statistics for demonstration."],
+   ["Commercial values", "All commercial and NIL figures are 0–100 indexes, never dollar valuations."],
+   ["Ledger", "The settlement ledger is a local, browser-side simulation using real SHA-256 hash chaining. It is not a public blockchain deployment."],
+   ["Attorney review", "All legal, securities, COPPA, and NIL-compliance language requires qualified attorney review before any production launch."]].forEach(([t, body]) => {
+    panel.appendChild(el("h2", null, t));
+    panel.appendChild(el("p", "sub disc", body));
   });
-  left.appendChild(form);
-  grid.appendChild(left);
-
-  const right = el("section", "panel");
-  right.appendChild(el("h2", null, "How the valuation engine works"));
-  right.appendChild(el("p", "sub", "The same transparent model prices every athlete on the market page"));
-  const formula = el("div", "formula");
-  ["Production", "×", "Age runway", "×", "Availability"].forEach((t, i) => {
-    formula.appendChild(el("span", i % 2 ? "f-op" : "f-chip", t));
-  });
-  right.appendChild(formula);
-  const ml = el("ul", "method-list");
-  [
-    "Production — per-game output (including made threes) scored against the athlete's own position (75%) blended with the league (25%), so a guard's profile competes fairly with a center's. Efficiency counts more at higher scoring volume; no single stat can dominate a score; turnovers subtract.",
-    "Age runway — a small premium for prospects under 25, full value through the 25–30 prime, then a gentle decline that elite current production slows by up to 65% (sustained greatness is rewarded, reputation is not). The factor never drops below 0.75 — proven stars stay investable.",
-    "Availability — games played remembered across three seasons with a fast-recovery clause, discounting the price once. A short injured season is a drawdown, never a delisting: talent is carried forward through small samples, because an ACL doesn't make you worse at basketball.",
-    "Track record — first-, second- and third-year valuations are shrunk toward a league-average prior, so one hot rookie season can't out-price a proven MVP.",
-    "Fair value — only production above a replacement-level player has market value (the VORP idea), mapped to a suggested price on a convex curve. Stars separate sharply; early conviction gets paid — rookie Curry cost $78, peak Curry hit $341.",
-    "Market price — the engine only SUGGESTS fair value. Buyers and sellers trade at any price they choose, and the last trade is the market price. The model is the anchor, never a decree.",
-    "Why invest — two return paths: equity appreciation as the brand grows, and (roadmap) dividend-style payouts from the athlete's actual NIL and endorsement income.",
-    "Roadmap — a brand-signal layer (NIL deal comps, social reach, search interest) multiplies on top for off-court equity: the H2 hypothesis from our OAP I deck.",
-  ].forEach(t => ml.appendChild(el("li", null, t)));
-  right.appendChild(ml);
-  const cta = el("div", "btn-row");
-  const b1 = el("button", "btn", "See it price a career");
-  b1.addEventListener("click", () => { location.hash = "#/athlete/203999"; });
-  cta.appendChild(b1);
-  right.appendChild(cta);
-  grid.appendChild(right);
-
-  app.appendChild(grid);
+  app.appendChild(panel);
 }
 
 /* ---------- router ---------- */
@@ -1180,14 +1265,17 @@ function route() {
   $("#tooltip").hidden = true;
   window.scrollTo(0, 0);
   if (seg[0] === "athlete" && seg[1]) return viewAthlete(Number(seg[1]));
+  if (seg[0] === "compare") return viewCompare(params);
+  if (seg[0] === "methodology") return viewMethodology();
   if (seg[0] === "baskets") return viewBaskets();
-  if (seg[0] === "machine") return viewMachine(params);
   if (seg[0] === "portfolio") return viewPortfolio();
-  if (seg[0] === "list") return viewList();
+  if (seg[0] === "ledger") return viewLedger();
+  if (seg[0] === "disclosures") return viewDisclosures();
   return viewMarket();
 }
 addEventListener("hashchange", route);
 buildTicker();
 refreshBadge();
+ledger.ensureGenesis();
 route();
 })();

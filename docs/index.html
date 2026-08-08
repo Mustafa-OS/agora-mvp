@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Agora — The Athlete Brand Asset Market</title>
+<title>Agora — The Athlete Asset Market</title>
 <meta name="description" content="Agora MVP — a live demo where athlete brand value is priced like an asset. Explore careers as price histories, travel back in time, and build a portfolio.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2322c55e'/%3E%3Cpath d='M9 23 16 8l7 15h-3.4L16 15l-3.6 8z' fill='%230b0d10'/%3E%3C/svg%3E">
 <link rel="stylesheet" href="app.css">
@@ -19,9 +19,10 @@
   <nav class="nav" aria-label="Primary">
     <a href="#/market" data-nav="market">Market</a>
     <a href="#/baskets" data-nav="baskets">Baskets</a>
-    <a href="#/machine" data-nav="machine">Time Machine</a>
+    <a href="#/compare" data-nav="compare">Compare</a>
+    <a href="#/methodology" data-nav="methodology">Methodology</a>
     <a href="#/portfolio" data-nav="portfolio">Portfolio <span class="nav-badge" id="portfolioCount" hidden></span></a>
-    <a href="#/list" data-nav="list">List with Agora</a>
+    <a href="#/ledger" data-nav="ledger">Ledger</a>
   </nav>
   <span class="demo-chip" title="Built for ENGR145 OAP I">OAP&nbsp;I&nbsp;demo</span>
 </header>
@@ -32,15 +33,15 @@
 
 <footer class="footer">
   <div class="footer-inner">
-    <p><strong>Agora</strong> · ENGR145 OAP I product demo. This is an educational <em>simulation</em>:
-    the engine <em>suggests</em> a fair value from public on-court performance data
-    (production × age runway × availability); traded prices are a simulated market around that anchor,
-    and your trades move them. Nothing here is a security, an offer, or investment advice.</p>
-    <p class="footer-fine">Data: stats.nba.com via nba_api, careers through 2025-26. LeBron James &amp; Luka Dončić
-    season lines are close approximations (source gap); college prospects use approximate 2025-26 season lines,
-    scored against NCAA baselines with a pre-pro discount.
-    Brand-signal valuation layer (NIL deals, social reach) is roadmap — see “List with Agora”.</p>
-  </div>
+    <p><strong>Agora</strong> · ENGR145 product demo. This is an educational <em>simulation</em>:
+    the Agora Score suggests a fair value from public and demonstration data; traded prices are a simulated market
+    around that anchor, settled as tokens on a local hash-chained ledger. Nothing here is a security, an offer,
+    or investment advice.</p>
+    <p class="footer-fine">High school & college athletes only. All high-school athletes are <strong>fictional</strong> —
+    no real minor appears on this platform, and under-18 profiles are analytics-only (no price, no token, no trading).
+    College season lines are approximate public statistics. Commercial values are 0–100 indexes, never dollars.
+    <a href="#/disclosures">Full disclosures</a> · attorney review required before any production launch.</p>
+    </div>
 </footer>
 
 <div class="tooltip" id="tooltip" role="status" hidden></div>
