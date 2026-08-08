@@ -1273,13 +1273,125 @@ function viewWelcome() {
   wrap.appendChild(el("p", "welcome-tag", "Own the upside of tomorrow's athletes."));
   const btn = el("button", "btn welcome-btn", "JOIN TODAY");
   btn.addEventListener("click", () => {
-    document.body.classList.remove("splash-mode");
-    const az = P.find(x => x.name === "Azan Evans");
-    location.hash = az ? "#/athlete/" + az.id : "#/market";
+    location.hash = "#/live";
   });
   wrap.appendChild(btn);
   wrap.appendChild(el("p", "welcome-fine", "Simulated demo · not a securities offering"));
   app.appendChild(wrap);
+}
+
+/* ---------- live game interstitial (filming flow) ---------- */
+let liveTimers = [];
+function viewLive() {
+  document.title = "Agora — $AZAN live";
+  document.body.classList.add("splash-mode");
+  app.replaceChildren();
+  const az = P.find(x => x.name === "Azan Evans");
+  const START = az ? lastTrade(az) : 197.24;
+  const EVENTS = [
+    ["Pull-up three ✓", "Q1 04:12", 2.40],
+    ["And-one finish ✓", "Q1 01:45", 1.90],
+    ["Corner three ✓", "Q2 05:02", 2.80],
+    ["Chase-down block", "Q2 00:41", 2.20],
+    ["14 PTS at the half", "market re-rating", 3.60],
+    ["Steal → dunk", "Q3 07:19", 3.40],
+    ["Step-back three ✓", "Q4 06:24", 3.80],
+    ["Game-winner ✓✓", "Q4 00:02 · 26 PTS", 6.20],
+  ];
+
+  const wrap = el("div", "live-view");
+  const head = el("div", "live-head");
+  const brand = el("div", "live-brand");
+  const lg = new Image(); lg.src = "logo.png"; lg.alt = "";
+  brand.appendChild(lg);
+  brand.appendChild(el("span", "live-dot"));
+  brand.appendChild(el("span", "live-label", "LIVE"));
+  head.appendChild(brand);
+  head.appendChild(el("span", "tag token-tag", "$AZAN"));
+  wrap.appendChild(head);
+
+  wrap.appendChild(el("h1", "live-name", "Azan Evans"));
+  wrap.appendChild(el("p", "sub live-sub", "SG · NUS · Sophomore"));
+
+  const priceRow = el("div", "live-price-row");
+  const priceEl = el("div", "live-price", money(START));
+  const deltaEl = el("div", "delta pos live-delta", "▲ +0.0%");
+  priceRow.appendChild(priceEl);
+  priceRow.appendChild(deltaEl);
+  wrap.appendChild(priceRow);
+
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 360 120");
+  svg.setAttribute("class", "live-chart");
+  svg.setAttribute("aria-label", "live price");
+  wrap.appendChild(svg);
+
+  const feed = el("div", "live-feed");
+  wrap.appendChild(feed);
+
+  const cta = el("button", "btn live-cta", "View $AZAN profile →");
+  cta.addEventListener("click", () => {
+    location.hash = az ? "#/athlete/" + az.id : "#/market";
+  });
+  wrap.appendChild(cta);
+  app.appendChild(wrap);
+
+  let price = START, target = START, pts = [[0, START]], i = 0, anim = null;
+  function draw() {
+    svg.replaceChildren();
+    const W = 360, H = 120, pad = 6;
+    const x1 = Math.max(8, pts.length - 1);
+    const ys = pts.map(p => p[1]);
+    const lo = Math.min(...ys) * 0.997, hi = Math.max(...ys) * 1.003;
+    const X = x => pad + x / x1 * (W - 2 * pad);
+    const Y = y => H - pad - (y - lo) / (hi - lo || 1) * (H - 2 * pad);
+    const mk = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.appendChild(n); return n; };
+    const d = pts.map((p, j) => (j ? "L" : "M") + X(j).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
+    mk("path", { d: d + ` L ${X(pts.length - 1)} ${H - pad} L ${X(0)} ${H - pad} Z`, fill: "rgba(0,98,255,.10)" });
+    mk("path", { d, fill: "none", stroke: "#0062FF", "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round" });
+    mk("circle", { cx: X(pts.length - 1), cy: Y(pts[pts.length - 1][1]), r: 5, fill: "#0062FF", stroke: "#fff", "stroke-width": 2 });
+  }
+  function animateTo(t) {
+    if (anim) clearInterval(anim);
+    const from = price, t0 = performance.now(), ms = 900;
+    anim = setInterval(() => {
+      const f = Math.min(1, (performance.now() - t0) / ms);
+      const o = 1.6;
+      const eased = f < 1 ? 1 + (o + 1) * Math.pow(f - 1, 3) + o * Math.pow(f - 1, 2) : 1;
+      price = from + (t - from) * eased;
+      priceEl.textContent = money(price);
+      const d = (price / START - 1) * 100;
+      deltaEl.textContent = "▲ +" + d.toFixed(1) + "%";
+      pts[pts.length - 1][1] = price;
+      draw();
+      if (f >= 1) { clearInterval(anim); anim = null; price = t; }
+    }, 16);
+    liveTimers.push(anim);
+  }
+  function fire() {
+    if (i >= EVENTS.length) return;
+    const [label, sub, delta] = EVENTS[i];
+    i += 1;
+    const card = el("div", "live-event");
+    const line = el("span", null, label);
+    line.appendChild(el("b", "live-gain", "+$" + delta.toFixed(2)));
+    card.appendChild(line);
+    card.appendChild(el("small", null, sub));
+    feed.prepend(card);
+    requestAnimationFrame(() => card.classList.add("show"));
+    while (feed.children.length > 3) feed.lastChild.remove();
+    priceEl.classList.remove("bump");
+    void priceEl.offsetWidth;
+    priceEl.classList.add("bump");
+    pts.push([pts.length, price]);
+    target += delta;
+    animateTo(target);
+  }
+  draw();
+  liveTimers.push(setTimeout(fire, 900));
+  const loop = setInterval(() => { fire(); if (i >= EVENTS.length) clearInterval(loop); }, 2800);
+  liveTimers.push(loop);
 }
 
 /* ---------- join (live room demo) ---------- */
@@ -1355,6 +1467,8 @@ function viewDisclosures() {
 const state = {};
 function route() {
   document.body.classList.remove("splash-mode");
+  liveTimers.forEach(t => { clearInterval(t); clearTimeout(t); });
+  liveTimers = [];
   const hash = location.hash || "#/market";
   const [path, query] = hash.slice(2).split("?");
   const params = new URLSearchParams(query || "");
@@ -1371,6 +1485,7 @@ function route() {
   if (seg[0] === "portfolio") return viewPortfolio();
   if (seg[0] === "ledger") return viewLedger();
   if (seg[0] === "welcome") return viewWelcome();
+  if (seg[0] === "live") return viewLive();
   if (seg[0] === "join") return viewJoin();
   if (seg[0] === "disclosures") return viewDisclosures();
   return viewMarket();
