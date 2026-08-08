@@ -56,8 +56,19 @@ def main():
     lo = min(listed, key=lambda p: p["price"])
     check("board differentiates (top/bottom >= 3x)", top["price"] / lo["price"] >= 3,
           f"{top['price']:.0f}/{lo['price']:.0f}")
-    check("every listed athlete has token + series",
-          all(p["token"] and p["series"] for p in listed))
+    check("every listed athlete has token + daily/intraday series",
+          all(p["token"] and len(p["daily"]) > 170 and len(p["intraday"]) == 25 for p in listed))
+    def max_quiet_move(p):
+        evd = {e["d"] for e in p["events"]}
+        return max(abs(p["daily"][i][1] / p["daily"][i-1][1] - 1)
+                   for i in range(1, len(p["daily"])) if p["daily"][i][0] not in evd)
+    check("no quiet day moves more than 3.5% (news days exempt)",
+          all(max_quiet_move(p) <= 0.035 for p in listed),
+          f"worst {max(max_quiet_move(p) for p in listed)*100:.1f}%")
+    check("every listed athlete has 3-5 labeled news events",
+          all(3 <= len(p["events"]) <= 5 for p in listed))
+    check("daily close pins to fair value anchor",
+          all(abs(p["daily"][-1][1] - p["price"]) < 0.01 for p in listed))
 
     # ---- team demo listing
     azan = by.get("Azan Evans")

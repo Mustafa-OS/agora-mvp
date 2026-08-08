@@ -1,21 +1,23 @@
-/* ---------- Agora MVP · dark fintech, deck-matched ---------- */
+/* ---------- Agora · OAP II — liquid glass, white & blue ---------- */
 :root {
-  --page: #0b0d10;
-  --surface: #14171c;          /* cards & chart surface (validated) */
-  --surface-2: #1a1e24;
-  --ink: #f2f5f7;
-  --ink-2: #a9b1ba;
-  --ink-3: #737c86;
-  --hairline: rgba(255,255,255,.08);
-  --grid: #262b31;             /* hairline gridlines */
-  --axis: #3a4048;
-  --accent: #22c55e;           /* UI accent (buttons, brand) */
-  --accent-ink: #0b0d10;
-  --series-1: #16a34a;         /* athlete data marks (validated) */
-  --series-2: #3987e5;         /* benchmark data marks (validated) */
-  --up: #4ade80;               /* delta text, always with sign/arrow */
-  --down: #f87171;
-  --radius: 12px;
+  --page: #F5F7FB;
+  --surface: #FFFFFF;
+  --surface-2: #EEF2F8;
+  --glass: rgba(255,255,255,.72);
+  --ink: #0A0A0B;
+  --ink-2: #5A6472;
+  --ink-3: #8A94A2;
+  --hairline: rgba(12,18,32,.09);
+  --grid: #E7EAF1;
+  --axis: #C9CFDA;
+  --accent: #0062FF;
+  --accent-2: #7C3AED;
+  --accent-ink: #FFFFFF;
+  --series-1: #0062FF;
+  --series-2: #7C3AED;
+  --up: #059669;
+  --down: #DC2626;
+  --radius: 14px;
   --max: 1160px;
   font-size: 16px;
 }
@@ -51,12 +53,12 @@ button { font: inherit; cursor: pointer; }
   font-size: 11px; font-weight: 700; padding: 1px 7px; margin-left: 4px;
 }
 .demo-chip {
-  font-size: 12px; color: var(--accent); border: 1px solid rgba(34,197,94,.35);
+  font-size: 12px; color: var(--accent); border: 1px solid rgba(0,98,255,.30);
   padding: 4px 10px; border-radius: 99px; white-space: nowrap;
 }
 
 /* ---------- ticker tape ---------- */
-.ticker { overflow: hidden; border-block: 1px solid var(--hairline); background: #0e1114; }
+.ticker { overflow: hidden; border-block: 1px solid var(--hairline); background: var(--surface-2); }
 .ticker-track {
   display: inline-flex; gap: 36px; padding: 8px 0; white-space: nowrap;
   animation: tick 60s linear infinite; will-change: transform;
@@ -124,7 +126,7 @@ main { max-width: var(--max); margin: 0 auto; padding: 26px 24px 70px; min-heigh
 .who { display: flex; align-items: center; gap: 12px; }
 .avatar {
   width: 36px; height: 36px; border-radius: 10px; flex: none;
-  background: rgba(34,197,94,.12); color: var(--accent);
+  background: rgba(0,98,255,.10); color: var(--accent);
   display: grid; place-items: center; font-weight: 700; font-size: 13px; letter-spacing: .02em;
 }
 .who .nm { font-weight: 600; }
@@ -187,7 +189,7 @@ table.seasons tr:hover td { background: var(--surface-2); }
 }
 .btn:hover { filter: brightness(1.08); }
 .btn.ghost { background: transparent; color: var(--ink); border: 1px solid var(--hairline); font-weight: 500; }
-.btn.ghost:hover { border-color: rgba(255,255,255,.25); }
+.btn.ghost:hover { border-color: rgba(12,18,32,.25); }
 .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
 
 /* ---------- charts ---------- */
@@ -201,7 +203,7 @@ table.seasons tr:hover td { background: var(--surface-2); }
   position: fixed; z-index: 50; pointer-events: none;
   background: #1d2229; border: 1px solid var(--hairline); border-radius: 10px;
   padding: 9px 12px; font-size: 12.5px; color: var(--ink-2);
-  box-shadow: 0 8px 24px rgba(0,0,0,.45); max-width: 250px;
+  box-shadow: 0 8px 24px rgba(15,30,70,.10); max-width: 250px;
 }
 .tooltip .tt-title { color: var(--ink); font-weight: 650; margin-bottom: 3px; }
 .tooltip .tt-row { display: flex; align-items: baseline; gap: 8px; }
@@ -254,11 +256,11 @@ table.seasons tr:hover td { background: var(--surface-2); }
 .toast {
   position: fixed; bottom: 26px; left: 50%; transform: translateX(-50%); z-index: 60;
   background: var(--accent); color: var(--accent-ink); font-weight: 650;
-  padding: 11px 20px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  padding: 11px 20px; border-radius: 10px; box-shadow: 0 10px 30px rgba(15,30,70,.10);
 }
 
 /* ---------- footer ---------- */
-.footer { border-top: 1px solid var(--hairline); background: #0e1114; }
+.footer { border-top: 1px solid var(--hairline); background: var(--surface-2); }
 .footer-inner { max-width: var(--max); margin: 0 auto; padding: 22px 24px 30px; }
 .footer p { color: var(--ink-3); font-size: 12.5px; max-width: 100ch; margin: 0 0 8px; }
 .footer .footer-fine { font-size: 11.5px; }
@@ -277,8 +279,8 @@ table.seasons tr:hover td { background: var(--surface-2); }
   font-size: 11.5px; font-weight: 600; border: 1px solid var(--hairline);
   color: var(--ink-2); white-space: nowrap;
 }
-.fv-chip.pos { color: var(--up); border-color: rgba(74,222,128,.35); }
-.fv-chip.neg { color: var(--down); border-color: rgba(248,113,113,.35); }
+.fv-chip.pos { color: var(--up); border-color: rgba(5,150,105,.35); }
+.fv-chip.neg { color: var(--down); border-color: rgba(220,38,38,.30); }
 .fv-line { margin-top: 6px; font-size: 13px; color: var(--ink-2); }
 
 /* ---------- index baskets ---------- */
@@ -314,7 +316,7 @@ table.seasons tr:hover td { background: var(--surface-2); }
   padding: 15px 0; font-size: 16px; font-weight: 700;
   border-radius: 10px; text-align: center; letter-spacing: .02em;
 }
-.btn.big.buy { background: #22c55e; color: #0b0d10; }
+.btn.big.buy { background: #0062FF; color: var(--ink); }
 .btn.big.buy:hover { filter: brightness(1.12); }
 .btn.big.sell { background: #dc2626; color: #fff; }
 .btn.big.sell:hover { filter: brightness(1.12); }
@@ -364,9 +366,9 @@ table.seasons tr:hover td { background: var(--surface-2); }
 }
 .badge-demo {
   display: inline-block; margin-left: 8px; padding: 2px 8px; border-radius: 99px;
-  font-size: 10.5px; font-weight: 600; color: var(--ink-3); border: 1px dashed rgba(255,255,255,.25);
+  font-size: 10.5px; font-weight: 600; color: var(--ink-3); border: 1px dashed rgba(12,18,32,.25);
 }
-.token-tag { color: #3DFF8C; border-color: rgba(61,255,140,.4); }
+.token-tag { color: #0062FF; border-color: rgba(0,98,255,.35); }
 .avatar.big { width: 56px; height: 56px; font-size: 18px; }
 .ath-price .p.analytics { font-size: 22px; color: var(--ink-2); }
 
@@ -375,14 +377,14 @@ table.seasons tr:hover td { background: var(--surface-2); }
 .safeguard h2 { color: #E5B84B; }
 .proj-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 12px 0; }
 .proj-card { border: 1px solid var(--hairline); border-radius: 12px; padding: 14px; }
-.proj-card.focus { border-color: rgba(61,255,140,.4); background: rgba(61,255,140,.04); }
+.proj-card.focus { border-color: rgba(0,98,255,.35); background: rgba(61,255,140,.04); }
 .proj-card b { font-size: 22px; display: block; margin: 6px 0 4px; }
 .p-tag { font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--ink-3); }
 
 /* comparables */
 .comp-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 12px; margin-top: 10px; }
 .comp-card { display: block; border: 1px solid var(--hairline); border-radius: 12px; padding: 13px; color: var(--ink); text-decoration: none; transition: border-color .15s; }
-.comp-card:hover { border-color: rgba(61,255,140,.45); }
+.comp-card:hover { border-color: rgba(0,98,255,.35); }
 .comp-card b { display: block; margin-top: 6px; }
 
 /* compare */
@@ -393,7 +395,7 @@ table.seasons tr:hover td { background: var(--surface-2); }
 
 /* methodology sliders */
 .wsliders { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px 22px; margin-top: 10px; }
-.wslider input[type="range"] { width: 100%; accent-color: #22c55e; margin: 6px 0 4px; }
+.wslider input[type="range"] { width: 100%; accent-color: #0062FF; margin: 6px 0 4px; }
 .sim-row { display: grid; grid-template-columns: 34px 190px 1fr 52px 110px; gap: 12px; align-items: center; padding: 7px 0; border-bottom: 1px solid var(--hairline); }
 .sim-row .meter.grow { height: 8px; }
 .delta-note { text-align: right; }
@@ -415,8 +417,17 @@ table.seasons tr:hover td { background: var(--surface-2); }
 
 /* ---------- join / QR ---------- */
 .join-grid { align-items: start; }
-.qr-wrap { background: #fff; border-radius: 18px; padding: 14px; margin: 8px 0 10px; box-shadow: 0 0 40px rgba(61,255,140,.15); }
+.qr-wrap { background: #fff; border-radius: 18px; padding: 14px; margin: 8px 0 10px; box-shadow: 0 0 40px rgba(0,98,255,.12); }
 .qr-wrap img { display: block; width: 300px; height: 300px; image-rendering: pixelated; }
 .join-step { display: flex; gap: 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
-.join-num { flex: 0 0 26px; height: 26px; border-radius: 99px; background: rgba(61,255,140,.12); color: #3DFF8C; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
-.nav-join { color: #3DFF8C !important; }
+.join-num { flex: 0 0 26px; height: 26px; border-radius: 99px; background: rgba(0,98,255,.10); color: #0062FF; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+.nav-join { color: #0062FF !important; }
+
+/* ---------- OAP II additions ---------- */
+.chart-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.range-chips { display: flex; gap: 6px; }
+.range-chips .chip { padding: 5px 12px; font-size: 12.5px; }
+.tt-news { margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--hairline); font-size: 12px; color: var(--accent-2); max-width: 260px; }
+.method-steps { margin: 6px 0 4px; padding-left: 20px; color: var(--ink-2); }
+.method-steps li { margin: 8px 0; }
+.brand-glyph { width: 30px; height: 30px; object-fit: contain; }

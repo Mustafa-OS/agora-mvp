@@ -157,6 +157,86 @@ def wiggle(seed, i):
     x = math.sin(seed * 0.7919 + i * 12.9898) * 43758.5453
     return ((x - math.floor(x)) - 0.5) * 0.045
 
+
+# ---- realistic market microstructure (deterministic per athlete) ----------
+# Daily closes over the season: low-vol geometric walk (sigma ~0.8%/day) with
+# mean reversion toward the fair-value anchor, plus a handful of NEWS EVENTS
+# that gap the price (draft buzz, injuries, signature games). One trading day
+# never moves more than ~2% without a labeled event attached.
+SEASON_DAYS = 178          # Nov 1 -> late Apr
+DAILY_SIGMA = 0.008
+REVERT = 0.015
+INTRADAY_HOURS = 24
+INTRADAY_SIGMA = 0.0028
+
+EVENT_LIBRARY = [
+    ("Signature game — statement win",        +0.049),
+    ("National TV breakout performance",      +0.062),
+    ("Draft stock rising — mock lottery",     +0.078),
+    ("Minor ankle sprain in practice",        -0.054),
+    ("Named conference player of the week",   +0.036),
+    ("Cold stretch — three quiet games",      -0.031),
+    ("Viral highlight — audience spike",      +0.042),
+    ("Flu game DNP",                          -0.026),
+    ("Rivalry-week double-double",            +0.033),
+    ("Declared for the 2026 Draft",           +0.088),
+]
+
+def rng(seed):
+    state = [seed * 2654435761 % 2**32]
+    def nxt():
+        state[0] = (1103515245 * state[0] + 12345) % 2**31
+        return state[0] / 2**31
+    return nxt
+
+def market_series(seed, anchor):
+    """Returns (daily [[day, px]], intraday [[hour, px]], events [{d,label,pct}])."""
+    r = rng(seed)
+    n_events = 3 + int(r() * 3)                       # 3-5 events per season
+    event_days = sorted({12 + int(r() * (SEASON_DAYS - 30)) for _ in range(n_events)})
+    events = []
+    picks = set()
+    for d in event_days:
+        k = int(r() * len(EVENT_LIBRARY))
+        while k in picks:
+            k = (k + 1) % len(EVENT_LIBRARY)
+        picks.add(k)
+        events.append({"d": d, "label": EVENT_LIBRARY[k][0], "pct": EVENT_LIBRARY[k][1]})
+
+    total_jump = sum(e["pct"] for e in events)
+    start = anchor / ((1 + total_jump) * 1.04)        # walk ends near the anchor
+    px, daily = start, []
+    for d in range(SEASON_DAYS + 1):
+        shock = (r() - 0.5) * 2 * DAILY_SIGMA
+        px *= 1 + shock
+        px += (anchor / (1 + sum(e["pct"] for e in events if e["d"] > d)) - px) * REVERT
+        for e in events:
+            if e["d"] == d:
+                px *= 1 + e["pct"]
+        daily.append([d, max(2.0, px)])
+    # glide the final stretch onto the anchor (no artificial last-day jump)
+    K = 20
+    end_val = daily[-1][1]
+    ratio = anchor / end_val
+    for i in range(len(daily) - K, len(daily)):
+        f = (i - (len(daily) - K) + 1) / K
+        daily[i][1] = daily[i][1] * (ratio ** f)
+    daily = [[d, round(v, 2)] for d, v in daily]
+    daily[-1][1] = round(anchor, 2)
+
+    intraday, ipx = [], daily[-2][1]
+    for h in range(INTRADAY_HOURS + 1):
+        ipx *= 1 + (r() - 0.5) * 2 * INTRADAY_SIGMA
+        ipx += (anchor - ipx) * 0.08
+        intraday.append([h, max(2.0, ipx)])
+    iratio = anchor / intraday[-1][1]
+    for i in range(len(intraday) - 6, len(intraday)):
+        f = (i - (len(intraday) - 6) + 1) / 6
+        intraday[i][1] = intraday[i][1] * (iratio ** f)
+    intraday = [[h, round(v, 2)] for h, v in intraday]
+    intraday[-1][1] = round(anchor, 2)
+    return daily, intraday, events
+
 def token_symbol(name, used):
     if name == "Azan Evans":
         used.add("$AZAN")
@@ -211,7 +291,7 @@ def build():
             "followersK": fol, "engagement": eng, "growth90": gro,
             "nil": nil_n, "momentum": mom, "maturity": mat,
             "subs": subs, "score": score,
-            "price": round(pr, 2), "series": price_series(pid, pr),
+            "price": round(pr, 2),
             "story": story,
         })
         pid += 1
@@ -240,13 +320,23 @@ def build():
             "followersK": fol, "engagement": eng, "growth90": gro,
             "nil": nil_n, "momentum": mom, "maturity": mat,
             "subs": subs, "score": score,
-            "price": pr, "series": price_series(pid, pr) if pr else [],
+            "price": pr,
             "story": story,
         })
         pid += 1
 
+    for p in players:
+        if p["price"]:
+            daily, intraday, events = market_series(p["id"], p["price"])
+            p["daily"], p["intraday"], p["events"] = daily, intraday, events
+            p["change1d"] = round((daily[-1][1] / daily[-2][1] - 1) * 100, 2)
+            p["change1w"] = round((daily[-1][1] / daily[-8][1] - 1) * 100, 2)
+        else:
+            p["daily"], p["intraday"], p["events"] = [], [], []
+            p["change1d"] = p["change1w"] = None
+
     data = {
-        "generated": "2026-07-22", "model": "v3-agora-score",
+        "generated": "2026-07-22", "model": "v3.1-market",
         "weights": WEIGHTS, "players": players,
     }
     OUT.mkdir(parents=True, exist_ok=True)

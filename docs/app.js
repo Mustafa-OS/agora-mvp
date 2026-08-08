@@ -33,7 +33,7 @@ const pct = (v, digits = 1) => (v >= 0 ? "+" : "") + v.toFixed(digits) + "%";
 const arrow = v => (Math.abs(v) < 0.05 ? "—" : v >= 0 ? "▲" : "▼");
 const initials = name => name.split(" ").map(w => w[0]).slice(0, 2).join("");
 const SHARES_OUT = 1e5; // notional float per athlete
-const scoreColor = s => (s >= 85 ? "#3DFF8C" : s >= 70 ? "#22c55e" : s >= 60 ? "#E5B84B" : "#8B93A1");
+const scoreColor = s => (s >= 85 ? "#0062FF" : s >= 70 ? "#22c55e" : s >= 60 ? "#E5B84B" : "#8B93A1");
 const scoreLabel = s => (s >= 85 ? "Elite" : s >= 75 ? "Premium" : s >= 65 ? "Strong" : s >= 55 ? "Developing" : "Emerging");
 
 /* ================================================================
@@ -221,12 +221,12 @@ function buildChart(container, series, opts = {}) {
   const step = [1, 2, 2.5, 5, 10].map(m => m * mag).find(s => span / s <= 5.5) || 10 * mag;
   const yFmt = opts.yFmt || (v => "$" + Math.round(v).toLocaleString());
   for (let v = Math.ceil(y0 / step) * step; v <= y1 + 1e-9; v += step) {
-    add(svg, "line", { x1: M.l, x2: W - M.r, y1: Y(v), y2: Y(v), stroke: "#262b31", "stroke-width": 1 });
-    const t = add(svg, "text", { x: M.l - 8, y: Y(v) + 4, "text-anchor": "end", fill: "#737c86", "font-size": 11 });
+    add(svg, "line", { x1: M.l, x2: W - M.r, y1: Y(v), y2: Y(v), stroke: "#E7EAF1", "stroke-width": 1 });
+    const t = add(svg, "text", { x: M.l - 8, y: Y(v) + 4, "text-anchor": "end", fill: "#8A94A2", "font-size": 11 });
     t.textContent = yFmt(v);
     t.style.fontVariantNumeric = "tabular-nums";
   }
-  add(svg, "line", { x1: M.l, x2: W - M.r, y1: Y(y0), y2: Y(y0), stroke: "#3a4048", "stroke-width": 1 });
+  add(svg, "line", { x1: M.l, x2: W - M.r, y1: Y(y0), y2: Y(y0), stroke: "#C9CFDA", "stroke-width": 1 });
   series.forEach((s, si) => {
     const d = s.pts.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
     if (si === 0 && opts.area !== false) {
@@ -235,10 +235,19 @@ function buildChart(container, series, opts = {}) {
     }
     add(svg, "path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
     const last = s.pts[s.pts.length - 1];
-    add(svg, "circle", { cx: X(last[0]), cy: Y(last[1]), r: 4.5, fill: s.color, stroke: "#14171c", "stroke-width": 2 });
+    add(svg, "circle", { cx: X(last[0]), cy: Y(last[1]), r: 4.5, fill: s.color, stroke: "#FFFFFF", "stroke-width": 2 });
   });
-  const cross = add(svg, "line", { y1: M.t, y2: M.t + ih, stroke: "#3a4048", "stroke-width": 1, opacity: 0 });
-  const dots = series.map(s => add(svg, "circle", { r: 4, fill: s.color, stroke: "#14171c", "stroke-width": 2, opacity: 0 }));
+  // news-event markers (violet diamonds on the primary series)
+  const anns = (opts.annotations || []).map(a => {
+    const pt = series[0].pts.reduce((b, p) => Math.abs(p[0] - a.x) < Math.abs(b[0] - a.x) ? p : b);
+    return { ...a, px: X(pt[0]), py: Y(pt[1]) };
+  });
+  anns.forEach(a => {
+    add(svg, "rect", { x: a.px - 4.5, y: a.py - 4.5, width: 9, height: 9,
+      transform: `rotate(45 ${a.px} ${a.py})`, fill: "#7C3AED", stroke: "#FFFFFF", "stroke-width": 1.5 });
+  });
+  const cross = add(svg, "line", { y1: M.t, y2: M.t + ih, stroke: "#C9CFDA", "stroke-width": 1, opacity: 0 });
+  const dots = series.map(s => add(svg, "circle", { r: 4, fill: s.color, stroke: "#FFFFFF", "stroke-width": 2, opacity: 0 }));
   const hit = add(svg, "rect", { x: M.l, y: M.t, width: iw, height: ih, fill: "transparent" });
   const prim = series[0].pts;
   const tooltip = $("#tooltip");
@@ -264,6 +273,8 @@ function buildChart(container, series, opts = {}) {
       r.appendChild(el("span", null, s.name));
       tooltip.appendChild(r);
     });
+    const near = (opts.annotations || []).find(a => Math.abs(a.x - t) <= (x1 - x0) / 90);
+    if (near) tooltip.appendChild(el("div", "tt-news", "📰 " + near.label));
     tooltip.hidden = false;
     const pad = 14, tw = tooltip.offsetWidth, th = tooltip.offsetHeight;
     let tx = cx + pad, ty = cy - th - pad;
@@ -301,7 +312,7 @@ function scoreOrb(score, size = 120) {
   svg.setAttribute("viewBox", "0 0 120 120");
   const track = document.createElementNS(ns, "circle");
   track.setAttribute("cx", 60); track.setAttribute("cy", 60); track.setAttribute("r", 52);
-  track.setAttribute("fill", "none"); track.setAttribute("stroke", "rgba(255,255,255,.08)");
+  track.setAttribute("fill", "none"); track.setAttribute("stroke", "rgba(12,18,32,.10)");
   track.setAttribute("stroke-width", 7);
   svg.appendChild(track);
   const arc = document.createElementNS(ns, "circle");
@@ -338,13 +349,13 @@ function radar(container, entries, size = 320) {
   };
   [0.33, 0.66, 1].forEach(f => {
     const d = DIMS.map((_, i) => pt(i, R * f)).map((p, i) => (i ? "L" : "M") + p[0].toFixed(1) + " " + p[1].toFixed(1)).join(" ") + " Z";
-    add({ tag: "path", d, fill: "none", stroke: "#262b31", "stroke-width": 1 });
+    add({ tag: "path", d, fill: "none", stroke: "#E7EAF1", "stroke-width": 1 });
   });
   DIMS.forEach((dim, i) => {
     const [x, y] = pt(i, R);
-    add({ tag: "line", x1: cx, y1: cy, x2: x, y2: y, stroke: "#262b31", "stroke-width": 1 });
+    add({ tag: "line", x1: cx, y1: cy, x2: x, y2: y, stroke: "#E7EAF1", "stroke-width": 1 });
     const [lx, ly] = pt(i, R + 22);
-    const t = add({ tag: "text", x: lx, y: ly + 4, "text-anchor": "middle", fill: "#a9b1ba", "font-size": 11.5, "font-weight": 600 });
+    const t = add({ tag: "text", x: lx, y: ly + 4, "text-anchor": "middle", fill: "#5A6472", "font-size": 11.5, "font-weight": 600 });
     t.textContent = dim[1];
   });
   entries.forEach(e => {
@@ -392,12 +403,12 @@ function sparkline(series) {
   svg.setAttribute("class", "spark"); svg.setAttribute("aria-hidden", "true");
   const path = document.createElementNS(ns, "path");
   path.setAttribute("d", d); path.setAttribute("fill", "none");
-  path.setAttribute("stroke", "#566068"); path.setAttribute("stroke-width", 1.5);
+  path.setAttribute("stroke", "#B6BECC"); path.setAttribute("stroke-width", 1.5);
   svg.appendChild(path);
   const dot = document.createElementNS(ns, "circle");
   dot.setAttribute("cx", X(pts.length - 1)); dot.setAttribute("cy", Y(pts[pts.length - 1]));
-  dot.setAttribute("r", 3); dot.setAttribute("fill", pts[pts.length - 1] >= pts[0] ? "#4ade80" : "#f87171");
-  dot.setAttribute("stroke", "#14171c"); dot.setAttribute("stroke-width", 1.5);
+  dot.setAttribute("r", 3); dot.setAttribute("fill", pts[pts.length - 1] >= pts[0] ? "#059669" : "#DC2626");
+  dot.setAttribute("stroke", "#FFFFFF"); dot.setAttribute("stroke-width", 1.5);
   svg.appendChild(dot);
   return svg;
 }
@@ -414,8 +425,8 @@ function buildTicker() {
     const s = el("span", "tick-item");
     s.appendChild(el("b", null, p.token));
     s.appendChild(document.createTextNode(money(lastTrade(p)) + " "));
-    const pr = premium(p);
-    s.appendChild(el("span", "delta " + (pr >= 0 ? "pos" : "neg"), arrow(pr) + " " + pct(pr)));
+    const ch = p.change1d ?? 0;
+    s.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch) + " 1D"));
     track.appendChild(s);
   });
 }
@@ -505,7 +516,7 @@ function viewMarket() {
     const thead = el("thead");
     const hr = el("tr");
     [["", "hide-sm"], ["Athlete", ""], ["Token", "hide-sm"], ["Score", "num"], ["Last trade", "num"],
-     ["Fair value", "num hide-sm"], ["Vs fair", "num hide-sm"], ["Trend", "num hide-sm"]].forEach(([t, cls]) => {
+     ["1D", "num"], ["Fair value", "num hide-sm"], ["Vs fair", "num hide-sm"], ["Trend", "num hide-sm"]].forEach(([t, cls]) => {
       hr.appendChild(el("th", cls || null, t));
     });
     thead.appendChild(hr);
@@ -541,19 +552,23 @@ function viewMarket() {
       tr.appendChild(sc);
       if (p.minor) {
         const cell = el("td", "num");
-        cell.colSpan = 4;
+        cell.colSpan = 5;
         cell.appendChild(el("span", "sub", "Analytics only — not listed"));
         tr.appendChild(cell);
       } else {
         const lt = el("td", "num");
         lt.appendChild(el("b", null, money(lastTrade(p))));
         tr.appendChild(lt);
+        const d1 = el("td", "num");
+        const ch = p.change1d ?? 0;
+        d1.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
+        tr.appendChild(d1);
         tr.appendChild(el("td", "num hide-sm", money(fairValue(p))));
         const pr = el("td", "num hide-sm");
         pr.appendChild(premChip(p));
         tr.appendChild(pr);
         const sp = el("td", "num hide-sm");
-        sp.appendChild(sparkline(p.series));
+        sp.appendChild(sparkline(p.daily.slice(-30)));
         tr.appendChild(sp);
       }
       tbody.appendChild(tr);
@@ -656,11 +671,50 @@ function viewAthlete(id) {
   if (!p.minor) {
     const grid = el("div", "ath-grid");
     const chartPanel = el("section", "panel");
-    chartPanel.appendChild(el("h2", null, "Fair-value history"));
-    chartPanel.appendChild(el("p", "sub", "The engine's suggested fair value across the season · hover to inspect"));
-    buildChart(chartPanel, [{ name: p.name, color: "#16a34a", pts: p.series }], {
-      height: 300, ariaLabel: p.name + " fair value history", tooltipTitle: "2025-26 season",
+    const chartHead = el("div", "chart-head");
+    chartHead.appendChild(el("h2", null, "Price history"));
+    const ranges = el("div", "range-chips");
+    chartHead.appendChild(ranges);
+    chartPanel.appendChild(chartHead);
+    const chartSub = el("p", "sub");
+    chartPanel.appendChild(chartSub);
+    const chartBox = el("div");
+    chartPanel.appendChild(chartBox);
+
+    const RANGES = [["1D", "intraday"], ["1W", "week"], ["1M", "month"], ["Season", "all"]];
+    state.range = state.range || "all";
+    function seriesFor(key) {
+      if (key === "intraday") return { pts: p.intraday, x: h => h + ":00", title: "today" };
+      if (key === "week") return { pts: p.daily.slice(-8), x: d => "day " + d, title: "last 7 days" };
+      if (key === "month") return { pts: p.daily.slice(-31), x: d => "day " + d, title: "last 30 days" };
+      return { pts: p.daily, x: d => "day " + d, title: "2025-26 season" };
+    }
+    function renderChart() {
+      chartBox.replaceChildren();
+      const { pts, title } = seriesFor(state.range);
+      const first = pts[0][1], last = pts[pts.length - 1][1];
+      const ch = (last / first - 1) * 100;
+      chartSub.replaceChildren();
+      chartSub.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
+      chartSub.appendChild(document.createTextNode(
+        " over " + title + " · quiet days move <2% — bigger gaps only on news · hover to inspect"));
+      const evd = state.range === "all" ? p.events : [];
+      buildChart(chartBox, [{ name: p.name, color: "#0062FF", pts }], {
+        height: 300, ariaLabel: p.name + " price history " + title,
+        tooltipTitle: title,
+        annotations: evd.map(e => ({ x: e.d, label: e.label + " (" + (e.pct > 0 ? "+" : "") + (e.pct * 100).toFixed(1) + "%)" })),
+      });
+    }
+    RANGES.forEach(([label, key]) => {
+      const c = el("button", "chip" + (state.range === key ? " on" : ""), label);
+      c.addEventListener("click", () => {
+        state.range = key;
+        [...ranges.children].forEach(b => b.classList.toggle("on", b === c));
+        renderChart();
+      });
+      ranges.appendChild(c);
     });
+    renderChart();
     grid.appendChild(chartPanel);
 
     const tp = el("section", "panel trade-ticket");
@@ -785,7 +839,7 @@ function viewAthlete(id) {
 }
 
 /* ---------- compare ---------- */
-const CMP_COLORS = ["#3987e5", "#9085e9", "#34d399", "#eda100"];
+const CMP_COLORS = ["#7C3AED", "#9085e9", "#34d399", "#eda100"];
 function viewCompare(params) {
   document.title = "Agora — Compare";
   app.replaceChildren();
@@ -886,9 +940,9 @@ function viewMethodology() {
   const head = el("div", "view-head");
   head.appendChild(el("h1", null, "How the Agora Score works"));
   head.appendChild(el("p", null,
-    "Six dimensions, each scored 0–100 from observable data, combined with transparent weights. " +
-    "The score feeds the fair-value curve: only score above replacement level earns a price, convexly. " +
-    "Drag the weights — every score and the live board re-rank instantly."));
+    "Six dimensions, each scored 0–100 from observable data, combined with fixed, published weights — " +
+    "the same for every athlete and every user. The score feeds the fair-value curve: only score above " +
+    "replacement level earns a price, convexly. One methodology, applied to everyone. That is the product."));
   app.appendChild(head);
 
   const DESCS = {
@@ -899,85 +953,61 @@ function viewMethodology() {
     commercial: "Verified NIL activity count and a 0–100 momentum index. Never dollar amounts.",
     runway: "Development years remaining before peak — youth is optionality.",
   };
-  const weights = { ...(state.simWeights || W_DEFAULT) };
   const panel = el("section", "panel glass");
-  panel.appendChild(el("h2", null, "Weight simulator"));
-  const totalLine = el("p", "sub");
-  panel.appendChild(totalLine);
-  const sliders = el("div", "wsliders");
-  const inputs = {};
+  panel.appendChild(el("h2", null, "The fixed weights"));
+  panel.appendChild(el("p", "sub",
+    "Locked platform-wide. If the methodology ever changes, it changes for everyone at a published version number — fair value only means something when nobody can tilt it."));
+  const rows = el("div", "wsliders");
   DIMS.forEach(([k, label]) => {
     const row = el("div", "wslider");
     const lab = el("div", "m-label");
-    const valSpan = el("b", null, Math.round(weights[k] * 100) + "%");
     lab.appendChild(el("span", null, label));
-    lab.appendChild(valSpan);
+    lab.appendChild(el("b", null, Math.round(W_DEFAULT[k] * 100) + "%"));
     row.appendChild(lab);
-    const input = el("input");
-    input.type = "range"; input.min = 0; input.max = 60; input.step = 5;
-    input.value = Math.round(weights[k] * 100);
-    input.setAttribute("aria-label", label + " weight");
-    input.addEventListener("input", () => {
-      weights[k] = Number(input.value) / 100;
-      valSpan.textContent = input.value + "%";
-      recompute();
-    });
-    row.appendChild(input);
+    const bar = el("div", "meter grow");
+    const fill = el("i");
+    fill.style.width = (W_DEFAULT[k] * 100 / 0.6).toFixed(1) + "%";
+    bar.appendChild(fill);
+    row.appendChild(bar);
     row.appendChild(el("p", "sub", DESCS[k]));
-    sliders.appendChild(row);
-    inputs[k] = input;
+    rows.appendChild(row);
   });
-  panel.appendChild(sliders);
-  const btnRow = el("div", "btn-row");
-  const reset = el("button", "btn ghost", "Reset to defaults");
-  reset.addEventListener("click", () => {
-    DIMS.forEach(([k]) => {
-      weights[k] = W_DEFAULT[k];
-      inputs[k].value = Math.round(W_DEFAULT[k] * 100);
-    });
-    recompute();
-    viewMethodology();
-  });
-  btnRow.appendChild(reset);
-  panel.appendChild(btnRow);
+  panel.appendChild(rows);
   app.appendChild(panel);
 
+  const price = el("section", "panel");
+  price.appendChild(el("h2", null, "From score to suggested fair value"));
+  const steps = el("ol", "method-steps");
+  ["Score above the replacement level (28) is the only part with market value — bench-level output prices near the floor.",
+   "The surplus maps through a convex curve (exponent 1.62), so elite scores separate sharply from good ones.",
+   "An availability factor discounts fragile seasons once — injuries are drawdowns, not skill judgments.",
+   "The result is a suggested fair value. The market — buyers and sellers — sets the traded price around it.",
+   "Prices move daily on normal flow (under ~2%) and gap only on labeled news: draft moves, injuries, signature games."]
+    .forEach(t => steps.appendChild(el("li", null, t)));
+  price.appendChild(steps);
+  app.appendChild(price);
+
   const board = el("section", "panel");
-  board.appendChild(el("h2", null, "Live board under your weights"));
+  board.appendChild(el("h2", null, "The board under the published weights"));
   const list = el("div");
+  P.slice().sort((a, b) => b.score - a.score).slice(0, 10).forEach((p, i) => {
+    const row = el("div", "sim-row");
+    row.appendChild(el("span", "sub", "#" + (i + 1)));
+    row.appendChild(el("b", null, p.name));
+    const bar = el("div", "meter grow");
+    const fill = el("i");
+    fill.style.width = p.score.toFixed(1) + "%";
+    fill.style.background = scoreColor(p.score);
+    bar.appendChild(fill);
+    row.appendChild(bar);
+    const chip = el("b", "score-chip", p.score.toFixed(1));
+    chip.style.color = scoreColor(p.score);
+    row.appendChild(chip);
+    row.appendChild(el("span", "sub delta-note", p.minor ? "analytics only" : money(p.price)));
+    list.appendChild(row);
+  });
   board.appendChild(list);
   app.appendChild(board);
-
-  function customScore(p) {
-    const total = DIMS.reduce((a, [k]) => a + weights[k], 0) || 1;
-    return DIMS.reduce((a, [k]) => a + p.subs[k] * weights[k], 0) / total;
-  }
-  function recompute() {
-    state.simWeights = { ...weights };
-    const total = Math.round(DIMS.reduce((a, [k]) => a + weights[k], 0) * 100);
-    totalLine.textContent = "Weights total " + total + "%" +
-      (total === 100 ? " — balanced." : " — scores normalize to your total automatically.");
-    list.replaceChildren();
-    P.slice().map(p => ({ p, s: customScore(p) })).sort((a, b) => b.s - a.s).slice(0, 10)
-      .forEach(({ p, s }, i) => {
-        const row = el("div", "sim-row");
-        row.appendChild(el("span", "sub", "#" + (i + 1)));
-        row.appendChild(el("b", null, p.name));
-        const bar = el("div", "meter grow");
-        const fill = el("i");
-        fill.style.width = s.toFixed(1) + "%";
-        fill.style.background = scoreColor(s);
-        bar.appendChild(fill);
-        row.appendChild(bar);
-        const chip = el("b", "score-chip", s.toFixed(1));
-        chip.style.color = scoreColor(s);
-        row.appendChild(chip);
-        row.appendChild(el("span", "sub delta-note",
-          (s - p.score >= 0.05 ? "+" : s - p.score <= -0.05 ? "−" : "±") + Math.abs(s - p.score).toFixed(1) + " vs default"));
-        list.appendChild(row);
-      });
-  }
-  recompute();
 }
 
 /* ---------- baskets ---------- */
