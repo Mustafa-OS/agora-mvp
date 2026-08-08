@@ -1283,21 +1283,13 @@ function viewWelcome() {
 /* ---------- live game interstitial (filming flow) ---------- */
 let liveTimers = [];
 function viewLive() {
-  document.title = "Agora — $AZAN live";
+  document.title = "Agora — $AZAN";
   document.body.classList.add("splash-mode");
   app.replaceChildren();
   const az = P.find(x => x.name === "Azan Evans");
-  const START = az ? lastTrade(az) : 197.24;
-  const EVENTS = [
-    ["Pull-up three ✓", "Q1 04:12", 2.40],
-    ["And-one finish ✓", "Q1 01:45", 1.90],
-    ["Corner three ✓", "Q2 05:02", 2.80],
-    ["Chase-down block", "Q2 00:41", 2.20],
-    ["14 PTS at the half", "market re-rating", 3.60],
-    ["Steal → dunk", "Q3 07:19", 3.40],
-    ["Step-back three ✓", "Q4 06:24", 3.80],
-    ["Game-winner ✓✓", "Q4 00:02 · 26 PTS", 6.20],
-  ];
+  const price = az ? lastTrade(az) : 197.24;
+  const daily = az && az.daily.length ? az.daily : [[0, price]];
+  const seasonCh = (daily[daily.length - 1][1] / daily[0][1] - 1) * 100;
 
   const wrap = el("div", "live-view");
   const head = el("div", "live-head");
@@ -1314,20 +1306,40 @@ function viewLive() {
   wrap.appendChild(el("p", "sub live-sub", "SG · NUS · Sophomore"));
 
   const priceRow = el("div", "live-price-row");
-  const priceEl = el("div", "live-price", money(START));
-  const deltaEl = el("div", "delta pos live-delta", "▲ +0.0%");
-  priceRow.appendChild(priceEl);
-  priceRow.appendChild(deltaEl);
+  priceRow.appendChild(el("div", "live-price", money(price)));
+  priceRow.appendChild(el("div", "delta " + (seasonCh >= 0 ? "pos" : "neg") + " live-delta",
+    arrow(seasonCh) + " " + pct(seasonCh) + " this season"));
   wrap.appendChild(priceRow);
 
+  // static season chart from his real daily series
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
-  svg.setAttribute("viewBox", "0 0 360 120");
+  svg.setAttribute("viewBox", "0 0 360 130");
   svg.setAttribute("class", "live-chart");
-  svg.setAttribute("aria-label", "live price");
+  svg.setAttribute("aria-label", "$AZAN season price history");
+  const W = 360, H = 130, pad = 6;
+  const ys = daily.map(p => p[1]);
+  const lo = Math.min(...ys) * 0.99, hi = Math.max(...ys) * 1.01;
+  const X = i => pad + i / (daily.length - 1 || 1) * (W - 2 * pad);
+  const Y = v => H - pad - (v - lo) / (hi - lo || 1) * (H - 2 * pad);
+  const mk = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.appendChild(n); return n; };
+  const d = daily.map((p, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
+  mk("path", { d: d + ` L ${X(daily.length - 1)} ${H - pad} L ${X(0)} ${H - pad} Z`, fill: "rgba(0,98,255,.10)" });
+  mk("path", { d, fill: "none", stroke: "#0062FF", "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round" });
+  mk("circle", { cx: X(daily.length - 1), cy: Y(daily[daily.length - 1][1]), r: 5, fill: "#0062FF", stroke: "#fff", "stroke-width": 2 });
   wrap.appendChild(svg);
 
   const feed = el("div", "live-feed");
+  [["Back-to-back triple-doubles", "Games 14–15 · first in NUS history", 9.40],
+   ["League Player of the Week", "Week 6 honors", 7.40],
+   ["Career-high 34 points", "Game 17 · takeover", 9.80]].forEach(([label, sub, gain]) => {
+    const card = el("div", "live-event show");
+    const line = el("span", null, label);
+    line.appendChild(el("b", "live-gain", "+$" + gain.toFixed(2)));
+    card.appendChild(line);
+    card.appendChild(el("small", null, sub));
+    feed.appendChild(card);
+  });
   wrap.appendChild(feed);
 
   const cta = el("button", "btn live-cta", "View $AZAN profile →");
@@ -1336,62 +1348,6 @@ function viewLive() {
   });
   wrap.appendChild(cta);
   app.appendChild(wrap);
-
-  let price = START, target = START, pts = [[0, START]], i = 0, anim = null;
-  function draw() {
-    svg.replaceChildren();
-    const W = 360, H = 120, pad = 6;
-    const x1 = Math.max(8, pts.length - 1);
-    const ys = pts.map(p => p[1]);
-    const lo = Math.min(...ys) * 0.997, hi = Math.max(...ys) * 1.003;
-    const X = x => pad + x / x1 * (W - 2 * pad);
-    const Y = y => H - pad - (y - lo) / (hi - lo || 1) * (H - 2 * pad);
-    const mk = (tag, attrs) => { const n = document.createElementNS(ns, tag); for (const k in attrs) n.setAttribute(k, attrs[k]); svg.appendChild(n); return n; };
-    const d = pts.map((p, j) => (j ? "L" : "M") + X(j).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
-    mk("path", { d: d + ` L ${X(pts.length - 1)} ${H - pad} L ${X(0)} ${H - pad} Z`, fill: "rgba(0,98,255,.10)" });
-    mk("path", { d, fill: "none", stroke: "#0062FF", "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round" });
-    mk("circle", { cx: X(pts.length - 1), cy: Y(pts[pts.length - 1][1]), r: 5, fill: "#0062FF", stroke: "#fff", "stroke-width": 2 });
-  }
-  function animateTo(t) {
-    if (anim) clearInterval(anim);
-    const from = price, t0 = performance.now(), ms = 900;
-    anim = setInterval(() => {
-      const f = Math.min(1, (performance.now() - t0) / ms);
-      const o = 1.6;
-      const eased = f < 1 ? 1 + (o + 1) * Math.pow(f - 1, 3) + o * Math.pow(f - 1, 2) : 1;
-      price = from + (t - from) * eased;
-      priceEl.textContent = money(price);
-      const d = (price / START - 1) * 100;
-      deltaEl.textContent = "▲ +" + d.toFixed(1) + "%";
-      pts[pts.length - 1][1] = price;
-      draw();
-      if (f >= 1) { clearInterval(anim); anim = null; price = t; }
-    }, 16);
-    liveTimers.push(anim);
-  }
-  function fire() {
-    if (i >= EVENTS.length) return;
-    const [label, sub, delta] = EVENTS[i];
-    i += 1;
-    const card = el("div", "live-event");
-    const line = el("span", null, label);
-    line.appendChild(el("b", "live-gain", "+$" + delta.toFixed(2)));
-    card.appendChild(line);
-    card.appendChild(el("small", null, sub));
-    feed.prepend(card);
-    requestAnimationFrame(() => card.classList.add("show"));
-    while (feed.children.length > 3) feed.lastChild.remove();
-    priceEl.classList.remove("bump");
-    void priceEl.offsetWidth;
-    priceEl.classList.add("bump");
-    pts.push([pts.length, price]);
-    target += delta;
-    animateTo(target);
-  }
-  draw();
-  liveTimers.push(setTimeout(fire, 900));
-  const loop = setInterval(() => { fire(); if (i >= EVENTS.length) clearInterval(loop); }, 2800);
-  liveTimers.push(loop);
 }
 
 /* ---------- join (live room demo) ---------- */
