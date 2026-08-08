@@ -37,8 +37,8 @@ def main():
     check("no college athlete is a minor", all(not p["minor"] for p in college))
 
     # ---- board shape
-    check("18 athletes total", len(P) == 18, str(len(P)))
-    check("15 listed / 3 analytics-only", (len(listed), len(minors)) == (15, 3),
+    check("19 athletes total", len(P) == 19, str(len(P)))
+    check("16 listed / 3 analytics-only", (len(listed), len(minors)) == (16, 3),
           f"{len(listed)}/{len(minors)}")
     check("weights sum to 1.0", abs(sum(d["weights"].values()) - 1.0) < 1e-9)
     check("all six sub-scores on every athlete",
@@ -58,6 +58,11 @@ def main():
           f"{top['price']:.0f}/{lo['price']:.0f}")
     check("every listed athlete has token + series",
           all(p["token"] and p["series"] for p in listed))
+
+    # ---- team demo listing
+    azan = by.get("Azan Evans")
+    check("Azan listed as demo college athlete with $AZAN token",
+          bool(azan) and azan["demo"] and azan["token"] == "$AZAN" and azan["price"] is not None)
 
     # ---- the safeguard story: a minor can out-SCORE listed athletes
     reid = by["Cameron Reid"]

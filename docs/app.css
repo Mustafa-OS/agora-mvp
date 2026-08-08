@@ -412,3 +412,11 @@ table.seasons tr:hover td { background: var(--surface-2); }
   .sim-row { grid-template-columns: 28px 1fr 60px; }
   .sim-row .meter.grow, .sim-row .delta-note { display: none; }
 }
+
+/* ---------- join / QR ---------- */
+.join-grid { align-items: start; }
+.qr-wrap { background: #fff; border-radius: 18px; padding: 14px; margin: 8px 0 10px; box-shadow: 0 0 40px rgba(61,255,140,.15); }
+.qr-wrap img { display: block; width: 300px; height: 300px; image-rendering: pixelated; }
+.join-step { display: flex; gap: 14px; align-items: baseline; padding: 9px 0; border-bottom: 1px solid var(--hairline); }
+.join-num { flex: 0 0 26px; height: 26px; border-radius: 99px; background: rgba(61,255,140,.12); color: #3DFF8C; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; }
+.nav-join { color: #3DFF8C !important; }

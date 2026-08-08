@@ -56,7 +56,12 @@ COLLEGE = [
     ("Mikel Brown Jr", "Louisville", "LOU", "KY", "PG", "Freshman", 19, 33, 32.0, 18.7, 3.9, 5.9, 1.3, 0.2, 2.8, .570, 2.7,
      8, 0.990, 540, 4.7, 16, 4, 64, "Active",
      "Shifty lead guard — the highest-usage freshman offense in the ACC."),
+    # Team demo listing: Agora co-founder, listed with consent; stats are demo.
+    ("Azan Evans", "NUS", "NUS", "SG", "SG", "Sophomore", 20, 26, 29.5, 14.6, 4.1, 3.6, 1.2, 0.3, 2.1, .562, 1.9,
+     78, 0.958, 45, 5.8, 12, 1, 38, "Emerging",
+     "Four-star recruit turned founder — now at NUS, building the market he plays in. Team demo listing."),
 ]
+AZAN_DEMO = {"Azan Evans"}   # real team member, listed with consent, demo stats
 
 # High school (FICTIONAL — no real minors are ever listed; names invented).
 # Age >= 18 -> listable seniors; age < 18 -> analytics-only, never tradable.
@@ -153,6 +158,9 @@ def wiggle(seed, i):
     return ((x - math.floor(x)) - 0.5) * 0.045
 
 def token_symbol(name, used):
+    if name == "Azan Evans":
+        used.add("$AZAN")
+        return "$AZAN"
     last = name.split(" ")[-1] if not name.endswith("Jr") else name.split(" ")[-2]
     for cand in (last[:3], last[:4], (name.split(" ")[0][0] + last[:3])):
         s = "$" + cand.upper()
@@ -196,7 +204,7 @@ def build():
         players.append({
             "id": pid, "name": name, "level": "College", "school": school,
             "team": ab, "state": state, "pos": pos, "cls": cls, "age": age,
-            "minor": age < 18, "demo": False, "token": token_symbol(name, used_syms),
+            "minor": age < 18, "demo": name in AZAN_DEMO, "token": token_symbol(name, used_syms),
             "rank": rank, "rating": rating, "gp": gp, "min": mins, "pts": pts,
             "reb": reb, "ast": ast, "stl": stl, "blk": blk, "tov": tov,
             "ts": ts, "tpm": tpm,

@@ -1230,6 +1230,54 @@ function viewLedger() {
   render();
 }
 
+/* ---------- join (live room demo) ---------- */
+function viewJoin() {
+  document.title = "Agora — Join the live demo";
+  app.replaceChildren();
+  const head = el("div", "view-head");
+  head.appendChild(el("h1", null, "Trade it yourself — right now"));
+  head.appendChild(el("p", null,
+    "Scan with your phone camera. Every device gets its own private market sandbox: your trades move your prices, " +
+    "settle on your own verifiable ledger, and reset whenever you like. Simulated dollars — nothing real is bought or sold."));
+  app.appendChild(head);
+
+  const grid = el("div", "grid-2 join-grid");
+  const qrPanel = el("section", "panel glass center");
+  const qrWrap = el("div", "qr-wrap");
+  const img = new Image();
+  img.src = "qr.png";
+  img.alt = "QR code linking to mustafa-os.github.io/agora-mvp";
+  qrWrap.appendChild(img);
+  qrPanel.appendChild(qrWrap);
+  qrPanel.appendChild(el("p", "sub center-text mono", "mustafa-os.github.io/agora-mvp"));
+  grid.appendChild(qrPanel);
+
+  const steps = el("section", "panel");
+  steps.appendChild(el("h2", null, "60-second tour"));
+  [["1", "Open the Market — the board is live. Tap any athlete."],
+   ["2", "Buy a few tokens at any price you want — you set the price, the market remembers it."],
+   ["3", "Watch the ticker and your Portfolio update. That price move was you."],
+   ["4", "Open the Ledger and hit Verify — your trade is a hash-chained block."],
+   ["5", "Try Baskets (own a whole school) or Methodology (re-weight the score and re-rank the board)."]].forEach(([n, t]) => {
+    const row = el("div", "join-step");
+    row.appendChild(el("b", "join-num", n));
+    row.appendChild(el("p", null, t));
+    steps.appendChild(row);
+  });
+  const btnRow = el("div", "btn-row");
+  const reset = el("button", "btn ghost", "Reset this device's sandbox");
+  reset.addEventListener("click", () => {
+    localStorage.clear();
+    toast("Sandbox reset — fresh market, fresh ledger");
+    buildTicker();
+    refreshBadge();
+  });
+  btnRow.appendChild(reset);
+  steps.appendChild(btnRow);
+  grid.appendChild(steps);
+  app.appendChild(grid);
+}
+
 /* ---------- disclosures ---------- */
 function viewDisclosures() {
   document.title = "Agora — Disclosures";
@@ -1270,6 +1318,7 @@ function route() {
   if (seg[0] === "baskets") return viewBaskets();
   if (seg[0] === "portfolio") return viewPortfolio();
   if (seg[0] === "ledger") return viewLedger();
+  if (seg[0] === "join") return viewJoin();
   if (seg[0] === "disclosures") return viewDisclosures();
   return viewMarket();
 }
