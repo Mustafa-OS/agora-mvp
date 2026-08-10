@@ -134,6 +134,8 @@ const BASKETS = [
     desc: "Every listed college athlete, equal weight.", filter: p => p.level === "College" },
   { key: "HIDX", group: "By level", name: "High School Index",
     desc: "Every listable prep athlete, equal weight.", filter: p => p.level === "High School" },
+  { key: "GIDX", group: "By level", name: "G League Index",
+    desc: "The pro pathway — call-up candidates and brand-built veterans.", filter: p => p.level === "G League" },
 ];
 const basketMembers = b => LISTED.filter(b.filter);
 const basketPrice = b => { const m = basketMembers(b); return m.reduce((a, p) => a + lastTrade(p), 0) / m.length; };
@@ -229,11 +231,13 @@ function buildChart(container, series, opts = {}) {
   add(svg, "line", { x1: M.l, x2: W - M.r, y1: Y(y0), y2: Y(y0), stroke: "#C9CFDA", "stroke-width": 1 });
   series.forEach((s, si) => {
     const d = s.pts.map((p, i) => (i ? "L" : "M") + X(p[0]).toFixed(1) + " " + Y(p[1]).toFixed(1)).join(" ");
-    if (si === 0 && opts.area !== false) {
+    if (si === 0 && opts.area !== false && s.area !== false) {
       const last = s.pts[s.pts.length - 1], first = s.pts[0];
       add(svg, "path", { d: d + ` L ${X(last[0]).toFixed(1)} ${Y(y0)} L ${X(first[0]).toFixed(1)} ${Y(y0)} Z`, fill: s.color, opacity: 0.1 });
     }
-    add(svg, "path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" });
+    const lineAttrs = { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" };
+    if (s.dash) lineAttrs["stroke-dasharray"] = "6 5";
+    add(svg, "path", lineAttrs);
     const last = s.pts[s.pts.length - 1];
     add(svg, "circle", { cx: X(last[0]), cy: Y(last[1]), r: 4.5, fill: s.color, stroke: "#FFFFFF", "stroke-width": 2 });
   });
@@ -472,7 +476,7 @@ function viewMarket() {
 
   const controls = el("div", "controls");
   const chips = el("div", "chips");
-  const tags = ["All", "College", "High School", "Analytics only"];
+  const tags = ["All", "College", "G League", "High School", "Analytics only"];
   let active = state.marketTag || "All";
   tags.forEach(tag => {
     const c = el("button", "chip" + (tag === active ? " on" : ""), tag);
@@ -502,7 +506,8 @@ function viewMarket() {
     const q = (state.marketQuery || "").toLowerCase();
     let rows = P.filter(p =>
       (active === "All" || (active === "Analytics only" ? p.minor
-        : active === "College" ? p.level === "College" : p.level === "High School" && !p.minor)) &&
+        : active === "High School" ? p.level === "High School" && !p.minor
+        : p.level === active)) &&
       (!q || p.name.toLowerCase().includes(q) || p.school.toLowerCase().includes(q)));
     const key = state.marketSort || "price";
     rows = rows.slice().sort((a, b) =>
@@ -695,15 +700,59 @@ function viewAthlete(id) {
       const ch = (last / first - 1) * 100;
       chartSub.replaceChildren();
       chartSub.appendChild(el("span", "delta " + (ch >= 0 ? "pos" : "neg"), arrow(ch) + " " + pct(ch)));
-      chartSub.appendChild(document.createTextNode(
-        " · " + title));
+      chartSub.appendChild(document.createTextNode(" · " + title));
+      const proj = (state.proj || {})[p.id];
+      const showProj = proj && proj.pts.length && state.range === "all";
+      if (showProj) {
+        const pl = proj.pts[proj.pts.length - 1][1];
+        const pch = (pl / p.price - 1) * 100;
+        const span = el("span", "proj-note");
+        span.appendChild(el("span", "delta " + (pch >= 0 ? "pos" : "neg"), arrow(pch) + " " + pct(pch)));
+        span.appendChild(document.createTextNode(" projected over " + proj.weeks + (proj.weeks === 1 ? " week" : " weeks")));
+        chartSub.appendChild(span);
+      }
       const evd = state.range === "all" ? p.events : [];
-      buildChart(chartBox, [{ name: p.name, color: "#0062FF", pts }], {
+      const series = [{ name: p.name, color: "#0062FF", pts }];
+      if (showProj) series.push({ name: "Projected", color: "#7C3AED", pts: [p.daily[p.daily.length - 1], ...proj.pts], dash: true, area: false });
+      buildChart(chartBox, series, {
         height: 300, ariaLabel: p.name + " price history " + title,
         tooltipTitle: title,
         annotations: evd.map(e => ({ x: e.d, label: e.label + " (" + (e.pct > 0 ? "+" : "") + (e.pct * 100).toFixed(1) + "%)" })),
       });
     }
+    // ---- simulate the future
+    const sim = el("div", "sim-panel");
+    const simHead = el("div", "sim-head");
+    simHead.appendChild(el("b", null, "Simulate the future"));
+    simHead.appendChild(el("span", "proj-badge", "PROJECTED — model simulation, not a prediction"));
+    sim.appendChild(simHead);
+    const simRow = el("div", "btn-row");
+    const wk1 = el("button", "btn small", "+1 week");
+    const wk4 = el("button", "btn small ghost", "+4 weeks");
+    const clr = el("button", "btn small ghost", "Reset");
+    const evList = el("div", "sim-events");
+    function refreshSim() {
+      const proj = (state.proj || {})[p.id];
+      evList.replaceChildren();
+      if (proj) proj.events.slice(-4).forEach(e => {
+        const chip = el("span", "sim-event " + (e.pct >= 0 ? "pos" : "neg"),
+          "wk " + e.week + " · " + e.label + " " + (e.pct > 0 ? "+" : "") + (e.pct * 100).toFixed(1) + "%");
+        evList.appendChild(chip);
+      });
+      renderChart();
+    }
+    wk1.addEventListener("click", () => { state.range = "all"; syncChips(); projectWeek(p); refreshSim(); });
+    wk4.addEventListener("click", () => { state.range = "all"; syncChips(); for (let k = 0; k < 4; k++) projectWeek(p); refreshSim(); });
+    clr.addEventListener("click", () => { if (state.proj) delete state.proj[p.id]; refreshSim(); });
+    simRow.appendChild(wk1); simRow.appendChild(wk4); simRow.appendChild(clr);
+    sim.appendChild(simRow);
+    sim.appendChild(evList);
+    chartPanel.appendChild(sim);
+    function syncChips() {
+      [...ranges.children].forEach(b => b.classList.toggle("on", b.textContent === "Season"));
+    }
+    refreshSim();
+
     RANGES.forEach(([label, key]) => {
       const c = el("button", "chip" + (state.range === key ? " on" : ""), label);
       c.addEventListener("click", () => {
@@ -1278,6 +1327,56 @@ function viewWelcome() {
   wrap.appendChild(btn);
   wrap.appendChild(el("p", "welcome-fine", "Simulated demo · not a securities offering"));
   app.appendChild(wrap);
+}
+
+/* ---------- future projection engine (seeded, model-consistent) ---------- */
+function mulberry(seed) {
+  let a = seed >>> 0;
+  return () => {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const PROJ_NEWS = [
+  ["Projected: signature performance", +0.052],
+  ["Projected: draft buzz builds", +0.068],
+  ["Projected: viral moment — audience spike", +0.041],
+  ["Projected: award-watch mention", +0.034],
+  ["Projected: cold stretch", -0.033],
+  ["Projected: minor knock, day-to-day", -0.047],
+];
+function projectWeek(p) {
+  const proj = (state.proj = state.proj || {});
+  const cur = proj[p.id] || { pts: [], events: [], weeks: 0, impact: 0 };
+  const week = cur.weeks + 1;
+  const r = mulberry(p.id * 7919 + week * 104729);
+  const lastDay = cur.pts.length ? cur.pts[cur.pts.length - 1][0] : p.daily[p.daily.length - 1][0];
+  let px = cur.pts.length ? cur.pts[cur.pts.length - 1][1] : p.daily[p.daily.length - 1][1];
+  // model-informed drift: runway + audience growth push up, age drags
+  const drift = (p.subs.runway / 100) * 0.0016 + (p.growth90 / 20) * 0.0009 - Math.max(0, p.age - 24) * 0.0004;
+  // one possible news event per week, positivity tilted by momentum
+  let eventDay = -1, event = null;
+  if (r() < 0.24) {
+    eventDay = 1 + Math.floor(r() * 7);
+    const wantPos = r() < 0.5 + p.momentum / 400;
+    const pool = PROJ_NEWS.filter(e => (e[1] > 0) === wantPos);
+    event = pool[Math.floor(r() * pool.length)];
+  }
+  for (let d = 1; d <= 7; d++) {
+    px *= 1 + drift + (r() - 0.5) * 2 * 0.008;
+    px += (p.price * (1 + cur.impact) - px) * 0.012;
+    if (d === eventDay && event) {
+      px *= 1 + event[1];
+      cur.impact += event[1];
+      cur.events.push({ week, label: event[0], pct: event[1] });
+    }
+    cur.pts.push([lastDay + (week - 1) * 7 + d, +Math.max(2, px).toFixed(2)]);
+  }
+  cur.weeks = week;
+  proj[p.id] = cur;
+  return cur;
 }
 
 /* ---------- live game interstitial (filming flow) ---------- */

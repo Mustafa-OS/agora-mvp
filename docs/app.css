@@ -544,3 +544,20 @@ table.seasons tr:hover td { background: var(--surface-2); }
 .live-event small { display: block; font-weight: 500; font-size: 12.5px; color: var(--ink-3); margin-top: 2px; }
 .live-gain { color: var(--up); margin-left: 10px; }
 .live-cta { margin-top: auto; width: 100%; padding: 16px; font-size: 17px; font-weight: 700; border-radius: 14px; }
+
+/* ---------- future simulator ---------- */
+.sim-panel { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hairline); }
+.sim-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+.proj-badge {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .06em; color: #6D28D9;
+  background: rgba(124,58,237,.08); border: 1px solid rgba(124,58,237,.25);
+  padding: 3px 10px; border-radius: 99px;
+}
+.proj-note { margin-left: 10px; }
+.sim-events { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.sim-event {
+  font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 99px;
+  border: 1px solid var(--hairline); background: var(--surface-2); color: var(--ink-2);
+}
+.sim-event.pos { color: var(--up); border-color: rgba(5,150,105,.3); }
+.sim-event.neg { color: var(--down); border-color: rgba(220,38,38,.3); }

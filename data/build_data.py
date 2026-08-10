@@ -63,6 +63,26 @@ COLLEGE = [
 ]
 AZAN_DEMO = {"Azan Evans"}   # real team member, listed with consent, demo stats
 
+# G League (real players, approximate 2025-26 lines, adults — the pro
+# pathway tier between college and the NBA; "rank" = pathway consensus).
+# (name, team, abbrev, state, pos, class label, age, gp, min, pts, reb, ast,
+#  stl, blk, tov, ts, tpm, rank, rating, followers_k, engagement, growth90,
+#  nil_count, momentum, maturity, story)
+GLEAGUE = [
+    ("Mac McClung", "Osceola Magic", "OSC", "FL", "SG", "4th Year Pro", 27, 30, 34.0, 25.9, 4.6, 6.5, 1.1, 0.2, 2.6, .594, 2.3,
+     18, 0.982, 1500, 7.2, 10, 7, 76, "Established",
+     "Three-time NBA dunk champion and the G League's biggest draw — proof the pathway builds brands."),
+    ("JD Davison", "Maine Celtics", "MNE", "ME", "PG", "3rd Year Pro", 23, 32, 33.5, 21.4, 4.9, 8.2, 1.5, 0.3, 3.0, .565, 1.7,
+     24, 0.978, 210, 4.1, 8, 3, 54, "Active",
+     "Reigning G League MVP — the call-up candidate every contender is watching."),
+    ("Dink Pate", "Mexico City Capitanes", "MEX", "MX", "SG", "3rd Year Pro", 20, 29, 30.0, 15.8, 5.1, 4.3, 1.2, 0.4, 2.4, .548, 1.5,
+     14, 0.985, 380, 5.3, 18, 4, 58, "Active",
+     "Skipped college entirely — the youngest pro in the pathway, still on the draft radar."),
+    ("Oscar Tshiebwe", "Salt Lake City Stars", "SLC", "UT", "C", "3rd Year Pro", 26, 31, 31.0, 17.2, 13.8, 1.3, 1.0, 1.4, 1.9, .612, 0.1,
+     30, 0.972, 290, 3.9, 6, 3, 48, "Emerging",
+     "National college player of the year turned double-double machine — rebounding is a business model."),
+]
+
 # High school (FICTIONAL — no real minors are ever listed; names invented).
 # Age >= 18 -> listable seniors; age < 18 -> analytics-only, never tradable.
 HIGHSCHOOL = [
@@ -101,8 +121,8 @@ def norm(v, lo, hi):
     return max(0.0, min(1.0, (v - lo) / (hi - lo)))
 
 def production_score(pos, pts, reb, ast, ts, level):
-    # reference ranges tighten for HS (bigger numbers, weaker defenses)
-    scale = 1.0 if level == "college" else 0.88
+    # competition scaling: HS numbers discounted, G League premium
+    scale = {"college": 1.0, "gleague": 1.10, "hs": 0.88}[level]
     p = norm(pts * scale, 6, 26)
     r = norm(reb * scale, 1, 12)
     a = norm(ast * scale, 0.5, 9)
@@ -134,7 +154,7 @@ def commercial_score(nil_count, momentum):
     return round((n * 0.45 + (momentum / 100.0) * 0.55) * 100, 1)
 
 def runway_score(age, level):
-    years_left = max(0, (23 - age) if level == "college" else (24 - age))
+    years_left = max(0, {"college": 23, "gleague": 27, "hs": 24}[level] - age)
     return round(norm(years_left, 0, 6) * 100, 1)
 
 def agora_score(subs, weights=WEIGHTS):
@@ -285,6 +305,34 @@ def build():
             "id": pid, "name": name, "level": "College", "school": school,
             "team": ab, "state": state, "pos": pos, "cls": cls, "age": age,
             "minor": age < 18, "demo": name in AZAN_DEMO, "token": token_symbol(name, used_syms),
+            "rank": rank, "rating": rating, "gp": gp, "min": mins, "pts": pts,
+            "reb": reb, "ast": ast, "stl": stl, "blk": blk, "tov": tov,
+            "ts": ts, "tpm": tpm,
+            "followersK": fol, "engagement": eng, "growth90": gro,
+            "nil": nil_n, "momentum": mom, "maturity": mat,
+            "subs": subs, "score": score,
+            "price": round(pr, 2),
+            "story": story,
+        })
+        pid += 1
+
+    for row in GLEAGUE:
+        (name, teamname, ab, state, pos, cls, age, gp, mins, pts, reb, ast, stl, blk,
+         tov, ts, tpm, rank, rating, fol, eng, gro, nil_n, mom, mat, story) = row
+        subs = {
+            "production": production_score(pos, pts, reb, ast, ts, "gleague"),
+            "availability": availability_score(gp, 34),
+            "recruiting": recruiting_score(rank, rating),
+            "audience": audience_score(fol, eng, gro),
+            "commercial": commercial_score(nil_n, mom),
+            "runway": runway_score(age, "gleague"),
+        }
+        score = agora_score(subs)
+        pr = price_from(score, subs["availability"], "gleague")
+        players.append({
+            "id": pid, "name": name, "level": "G League", "school": teamname,
+            "team": ab, "state": state, "pos": pos, "cls": cls, "age": age,
+            "minor": False, "demo": False, "token": token_symbol(name, used_syms),
             "rank": rank, "rating": rating, "gp": gp, "min": mins, "pts": pts,
             "reb": reb, "ast": ast, "stl": stl, "blk": blk, "tov": tov,
             "ts": ts, "tpm": tpm,

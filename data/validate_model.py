@@ -37,8 +37,8 @@ def main():
     check("no college athlete is a minor", all(not p["minor"] for p in college))
 
     # ---- board shape
-    check("19 athletes total", len(P) == 19, str(len(P)))
-    check("16 listed / 3 analytics-only", (len(listed), len(minors)) == (16, 3),
+    check("23 athletes total", len(P) == 23, str(len(P)))
+    check("20 listed / 3 analytics-only", (len(listed), len(minors)) == (20, 3),
           f"{len(listed)}/{len(minors)}")
     check("weights sum to 1.0", abs(sum(d["weights"].values()) - 1.0) < 1e-9)
     check("all six sub-scores on every athlete",
@@ -69,6 +69,13 @@ def main():
           all(3 <= len(p["events"]) <= 5 for p in listed))
     check("daily close pins to fair value anchor",
           all(abs(p["daily"][-1][1] - p["price"]) < 0.01 for p in listed))
+
+    # ---- G League tier
+    gl = [p for p in P if p["level"] == "G League"]
+    check("4 G League pros, all listed adults",
+          len(gl) == 4 and all(p["price"] and not p["minor"] for p in gl))
+    check("McClung is the top G League asset",
+          max(gl, key=lambda p: p["price"])["name"] == "Mac McClung")
 
     # ---- team demo listing
     azan = by.get("Azan Evans")
