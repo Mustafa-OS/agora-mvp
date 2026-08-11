@@ -1307,6 +1307,206 @@ function viewLedger() {
   render();
 }
 
+/* ---------- accelerated trading game ---------- */
+function viewGame(params) {
+  document.title = "Agora — Market Rush";
+  document.body.classList.add("splash-mode");
+  app.replaceChildren();
+
+  const ROUND = Math.max(8, Number(params && params.get("t")) || 90);
+  const PICKS = ["Jordan Harmon", "Marcus Webb", "Elijah Cross",
+                 "AJ Dybantsa", "Cameron Boozer", "Azan Evans",
+                 "Mac McClung", "JD Davison", "Dink Pate"];
+  const roster = PICKS.map(n => P.find(p => p.name === n)).filter(Boolean).map(p => ({
+    p, price: lastTrade(p), hist: [lastTrade(p)],
+    regime: Math.random() < 0.5 ? 1 : -1, regimeLeft: 4 + Math.floor(Math.random() * 8),
+    shares: 0, cost: 0, flash: 0,
+  }));
+  let cash = 1000, day = 0, left = ROUND, over = false;
+
+  const wrap = el("div", "game");
+  const hud = el("div", "game-hud panel");
+  const timerEl = el("div", "g-timer");
+  const dayEl = el("div", "g-day", "Day 0");
+  const valEl = el("div", "g-val", "$1,000");
+  const retEl = el("div", "g-ret delta pos", "▲ +0.0%");
+  const cashEl = el("div", "g-cash sub", "Cash $1,000");
+  const hudTop = el("div", "g-hud-row");
+  hudTop.appendChild(dayEl); hudTop.appendChild(timerEl);
+  hud.appendChild(hudTop);
+  const hudMid = el("div", "g-hud-row");
+  hudMid.appendChild(valEl); hudMid.appendChild(retEl);
+  hud.appendChild(hudMid);
+  hud.appendChild(cashEl);
+  wrap.appendChild(hud);
+  wrap.appendChild(el("p", "sub g-hint", "One season in " + ROUND + " seconds. Spot the risers, buy early, sell the top. Game balance — separate from your portfolio."));
+
+  const news = el("div", "g-news");
+  wrap.appendChild(news);
+
+  const grid = el("div", "g-grid");
+  const TIER = { "High School": "HS", "College": "COL", "G League": "GLG" };
+  const rows = roster.map(r => {
+    const card = el("div", "g-card panel");
+    const top = el("div", "g-top");
+    top.appendChild(el("b", null, r.p.token));
+    top.appendChild(el("span", "tag", TIER[r.p.level]));
+    card.appendChild(top);
+    card.appendChild(el("div", "sub g-name", r.p.name.split(" ").slice(-1)[0]));
+    const priceEl = el("div", "g-price", money(r.price));
+    card.appendChild(priceEl);
+    const spark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    spark.setAttribute("viewBox", "0 0 96 30");
+    spark.setAttribute("class", "g-spark");
+    card.appendChild(spark);
+    const pos = el("div", "g-pos sub", "—");
+    card.appendChild(pos);
+    const btns = el("div", "g-btns");
+    const buy = el("button", "btn g-buy", "Buy $100");
+    const sell = el("button", "btn ghost g-sell", "Sell");
+    sell.disabled = true;
+    buy.addEventListener("click", () => {
+      if (over || cash < 100) return;
+      const q = 100 / r.price;
+      r.shares += q; r.cost += 100; cash -= 100;
+      refresh(r);
+    });
+    sell.addEventListener("click", () => {
+      if (over || r.shares <= 0) return;
+      cash += r.shares * r.price;
+      r.shares = 0; r.cost = 0;
+      refresh(r);
+    });
+    btns.appendChild(buy); btns.appendChild(sell);
+    card.appendChild(btns);
+    grid.appendChild(card);
+    return { r, card, priceEl, spark, pos, buy, sell };
+  });
+  wrap.appendChild(grid);
+  app.appendChild(wrap);
+
+  const NEWSPOOL = [
+    ["signature game!", +0.07], ["draft buzz building", +0.09], ["viral highlight", +0.055],
+    ["quiet stretch", -0.05], ["tweaked ankle", -0.075], ["award-watch mention", +0.06],
+  ];
+
+  function drawSpark(ui) {
+    const svg = ui.spark;
+    svg.replaceChildren();
+    const h = ui.r.hist.slice(-24);
+    const lo = Math.min(...h), hi = Math.max(...h);
+    const X = i => 2 + i / Math.max(1, h.length - 1) * 92;
+    const Y = v => 27 - (v - lo) / (hi - lo || 1) * 24;
+    const d = h.map((v, i) => (i ? "L" : "M") + X(i).toFixed(1) + " " + Y(v).toFixed(1)).join(" ");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", d);
+    path.setAttribute("fill", "none");
+    const up = h[h.length - 1] >= h[0];
+    path.setAttribute("stroke", up ? "#059669" : "#DC2626");
+    path.setAttribute("stroke-width", "2");
+    svg.appendChild(path);
+  }
+
+  function refresh(ui0) {
+    let holdings = 0;
+    rows.forEach(ui => {
+      const r = ui.r;
+      holdings += r.shares * r.price;
+      ui.priceEl.textContent = money(r.price);
+      if (r.flash) {
+        ui.priceEl.classList.remove("up", "down");
+        void ui.priceEl.offsetWidth;
+        ui.priceEl.classList.add(r.flash > 0 ? "up" : "down");
+      }
+      if (r.shares > 0) {
+        const v = r.shares * r.price, pl = (v / r.cost - 1) * 100;
+        ui.pos.textContent = money(v) + " held · " + (pl >= 0 ? "+" : "") + pl.toFixed(0) + "%";
+        ui.pos.className = "g-pos " + (pl >= 0 ? "pos" : "neg");
+        ui.sell.disabled = over;
+      } else {
+        ui.pos.textContent = "—";
+        ui.pos.className = "g-pos sub";
+        ui.sell.disabled = true;
+      }
+      ui.buy.disabled = over || cash < 100;
+      drawSpark(ui);
+    });
+    const total = cash + holdings;
+    valEl.textContent = money(total);
+    cashEl.textContent = "Cash " + money(cash);
+    const ret = (total / 1000 - 1) * 100;
+    retEl.textContent = arrow(ret) + " " + pct(ret);
+    retEl.className = "g-ret delta " + (ret >= 0 ? "pos" : "neg");
+  }
+
+  function tick() {
+    if (over) return;
+    day += 1;
+    dayEl.textContent = "Day " + day;
+    rows.forEach(ui => {
+      const r = ui.r;
+      r.regimeLeft -= 1;
+      if (r.regimeLeft <= 0) {
+        r.regime = Math.random() < 0.5 ? 1 : -1;
+        r.regimeLeft = 4 + Math.floor(Math.random() * 9);
+      }
+      let move = r.regime * (0.004 + Math.random() * 0.014) + (Math.random() - 0.5) * 0.012;
+      if (Math.random() < 0.03) {
+        const [label, jump] = NEWSPOOL[Math.floor(Math.random() * NEWSPOOL.length)];
+        move += jump;
+        r.regime = jump > 0 ? 1 : -1;
+        r.regimeLeft = 5 + Math.floor(Math.random() * 5);
+        const flash = el("div", "g-flash " + (jump > 0 ? "pos" : "neg"),
+          r.p.token + " — " + label + " " + (jump > 0 ? "+" : "") + (jump * 100).toFixed(0) + "%");
+        news.prepend(flash);
+        requestAnimationFrame(() => flash.classList.add("show"));
+        setTimeout(() => { flash.classList.remove("show"); setTimeout(() => flash.remove(), 400); }, 2600);
+        while (news.children.length > 2) news.lastChild.remove();
+      }
+      r.flash = move;
+      r.price = Math.max(2, r.price * (1 + move));
+      r.hist.push(r.price);
+    });
+    refresh();
+  }
+
+  function endRound() {
+    over = true;
+    rows.forEach(ui => { if (ui.r.shares > 0) { cash += ui.r.shares * ui.r.price; ui.r.shares = 0; } });
+    const total = cash;
+    const ret = (total / 1000 - 1) * 100;
+    const title = ret >= 25 ? "Market Wizard 🧙" : ret >= 10 ? "Sharp Money 🎯"
+      : ret >= 0 ? "Steady Hands 🤝" : ret >= -10 ? "Paper Hands 📄" : "Rough Season 🧊";
+    const overlayEl = el("div", "g-over");
+    const cardEl = el("div", "g-over-card panel");
+    cardEl.appendChild(el("p", "sub", "Season over"));
+    cardEl.appendChild(el("div", "g-over-ret " + (ret >= 0 ? "pos" : "neg"), (ret >= 0 ? "+" : "") + ret.toFixed(1) + "%"));
+    cardEl.appendChild(el("div", "g-over-title", title));
+    cardEl.appendChild(el("p", "sub", "Finished with " + money(total) + " of your $1,000 stake."));
+    const btns = el("div", "btn-row center");
+    const again = el("button", "btn", "Play again");
+    again.addEventListener("click", () => viewGame(params));
+    const home = el("button", "btn ghost", "Explore the market");
+    home.addEventListener("click", () => { location.hash = "#/market"; });
+    btns.appendChild(again); btns.appendChild(home);
+    cardEl.appendChild(btns);
+    overlayEl.appendChild(cardEl);
+    app.appendChild(overlayEl);
+    refresh();
+  }
+
+  const tickTimer = setInterval(tick, 1600);
+  const clock = setInterval(() => {
+    left -= 1;
+    timerEl.textContent = Math.floor(Math.max(0, left) / 60) + ":" + String(Math.max(0, left) % 60).padStart(2, "0");
+    if (left <= 10) timerEl.classList.add("urgent");
+    if (left <= 0) { clearInterval(clock); clearInterval(tickTimer); endRound(); }
+  }, 1000);
+  timerEl.textContent = Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0");
+  liveTimers.push(tickTimer, clock);
+  refresh();
+}
+
 /* ---------- welcome splash (filming / onboarding) ---------- */
 function viewWelcome() {
   document.title = "Agora — Join today";
@@ -1483,6 +1683,9 @@ function viewJoin() {
     steps.appendChild(row);
   });
   const btnRow = el("div", "btn-row");
+  const playBtn = el("button", "btn", "▶ Play Market Rush (90s game)");
+  playBtn.addEventListener("click", () => { location.hash = "#/game"; });
+  btnRow.appendChild(playBtn);
   const reset = el("button", "btn ghost", "Reset this device's sandbox");
   reset.addEventListener("click", () => {
     localStorage.clear();
@@ -1541,6 +1744,7 @@ function route() {
   if (seg[0] === "ledger") return viewLedger();
   if (seg[0] === "welcome") return viewWelcome();
   if (seg[0] === "live") return viewLive();
+  if (seg[0] === "game") return viewGame(params);
   if (seg[0] === "join") return viewJoin();
   if (seg[0] === "disclosures") return viewDisclosures();
   return viewMarket();
