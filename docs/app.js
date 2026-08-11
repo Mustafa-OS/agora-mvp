@@ -1325,6 +1325,13 @@ function viewGame(params) {
   let cash = 1000, day = 0, left = ROUND, over = false;
 
   const wrap = el("div", "game");
+  const applink = el("a", "g-applink");
+  applink.href = "#/market";
+  const alogo = new Image(); alogo.src = "logo.png"; alogo.alt = "";
+  applink.appendChild(alogo);
+  applink.appendChild(el("b", null, "AGORA"));
+  applink.appendChild(el("span", null, "Open the full app →"));
+  wrap.appendChild(applink);
   const hud = el("div", "game-hud panel");
   const timerEl = el("div", "g-timer");
   const dayEl = el("div", "g-day", "Day 0");
@@ -1345,14 +1352,13 @@ function viewGame(params) {
   wrap.appendChild(news);
 
   const grid = el("div", "g-grid");
-  const TIER = { "High School": "HS", "College": "COL", "G League": "GLG" };
   const rows = roster.map(r => {
     const card = el("div", "g-card panel");
     const top = el("div", "g-top");
     top.appendChild(el("b", null, r.p.token));
-    top.appendChild(el("span", "tag", TIER[r.p.level]));
+    top.appendChild(el("span", "tag g-tier", r.p.level));
     card.appendChild(top);
-    card.appendChild(el("div", "sub g-name", r.p.name.split(" ").slice(-1)[0]));
+    card.appendChild(el("div", "g-name", r.p.name));
     const priceEl = el("div", "g-price", money(r.price));
     card.appendChild(priceEl);
     const spark = document.createElementNS("http://www.w3.org/2000/svg", "svg");

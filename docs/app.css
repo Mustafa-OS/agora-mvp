@@ -608,3 +608,9 @@ table.seasons tr:hover td { background: var(--surface-2); }
 .g-over-ret.pos { color: var(--up); } .g-over-ret.neg { color: var(--down); }
 .g-over-title { font-size: 20px; font-weight: 800; margin: 4px 0 8px; }
 .btn-row.center { justify-content: center; }
+.g-applink { display: flex; align-items: center; gap: 8px; padding: 4px 2px 12px; color: var(--ink-2); font-size: 13.5px; }
+.g-applink img { width: 24px; height: 24px; }
+.g-applink b { color: #0052E0; letter-spacing: .16em; font-size: 13px; }
+.g-applink span { margin-left: auto; font-weight: 600; color: #0052E0; }
+.g-tier { font-size: 9px; padding: 2px 8px; white-space: nowrap; }
+.g-name { font-size: 12.5px; font-weight: 600; color: var(--ink); line-height: 1.25; min-height: 30px; }
