@@ -2,7 +2,7 @@
 
 **A prototype marketplace where an athlete's brand value is scored, priced and traded like an asset — starting with basketball.**
 
-Built for Stanford's ENGR145 (Technology Entrepreneurship) by an international student team. Mustafa Suleman is co-founder and lead of algorithm design: the valuation engine that turns an athlete's production, age and availability into a suggested fair price.
+Built for Stanford's ENGR145 (Technology Entrepreneurship) by an international student team. I am a co-founder and lead of algorithm design: the valuation engine that turns an athlete's production, age and availability into a suggested fair price.
 
 **Live demo:** [mustafa-os.github.io/agora-mvp](https://mustafa-os.github.io/agora-mvp/)
 
